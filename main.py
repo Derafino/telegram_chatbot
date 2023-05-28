@@ -73,6 +73,7 @@ class TelegramBot:
         """
         user_id = update.message.from_user.id
         action_id = 7
+        logger.debug(user_id)
         if cooldown_expired(user_id, action_id):
             edit_action_time(user_id=update.message.from_user.id, action_id=action_id)
             add_coins_for_msg(user_id)

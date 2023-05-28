@@ -49,6 +49,15 @@ def add_coins(user_id: int, amount: int):
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~ UserAction ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def add_action(user_id: int, action_id: int):
+    with Session() as session:
+        with session.begin():
+            now = datetime.datetime.now()
+            action = UserAction(user=user_id, action=action_id, last_time=now)
+            session.add(action)
+
+
 def edit_action_time(user_id: int, action_id: int):
     with Session() as session:
         with session.begin():

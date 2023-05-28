@@ -7,7 +7,7 @@ from config import logger, COINS_PER_MSG
 from telegram import Update
 
 from db.crud import check_user_exists, create_user, get_all_users, get_cooldown, get_last_action, add_coins, \
-    add_user_coins_per_min
+    add_user_coins_per_min, add_action
 
 
 def cooldown_expired(user_id: int, action_id: int) -> bool:
@@ -21,6 +21,9 @@ def cooldown_expired(user_id: int, action_id: int) -> bool:
         else:
             logger.debug(f'wait: {remaining_time}')
             return False
+    else:
+        add_action(user_id, action_id)
+        return True
 
 
 def add_coins_for_msg(user_id: int):
