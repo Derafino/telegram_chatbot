@@ -6,11 +6,10 @@ from telegram import Update, User
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, CallbackContext, MessageHandler, filters
 from telegram.helpers import escape_markdown
-
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT, logger
-from db.crud import setup_database, edit_action_time, get_all_users, get_user_balance
+from db.crud import setup_database, UserCRUD, UserActionCRUD
 from games.magic_8_ball import magic_8_ball_phrase
-from methods import auth_user, chat_only, cooldown_expired, add_coins_for_msg, add_coins_per_min
+from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min
 
 
 class TelegramBot:
@@ -31,7 +30,8 @@ class TelegramBot:
             CommandHandler('who', self.who_handler),
             CommandHandler('8ball', self.magic_8_ball_handler),
             CommandHandler('balance', self.balance_handler),
-            CommandHandler('pick', self.pick_handler)
+            CommandHandler('pick', self.pick_handler),
+            CommandHandler('boosters', self.boosters_handler)
 
         ]
         for handle in handlers:
@@ -73,12 +73,9 @@ class TelegramBot:
         """
         user_id = update.message.from_user.id
         action_id = 7
-        logger.debug(user_id)
         if cooldown_expired(user_id, action_id):
-            edit_action_time(user_id=update.message.from_user.id, action_id=action_id)
-            add_coins_for_msg(user_id)
-        else:
-            pass
+            UserActionCRUD.edit_action_time(user_id=update.message.from_user.id, action_id=action_id)
+            UserCRUD.add_user_coins_per_msg(user_id)
 
     @auth_user
     async def start_handler(self, update: Update, context: CallbackContext) -> None:
@@ -100,7 +97,7 @@ class TelegramBot:
         :param update:
         :param context:
         """
-        all_users = get_all_users()
+        all_users = UserCRUD.get_all_users()
         who_choice = random.choice(all_users)
         who_choice_mention = User(who_choice.user_id, who_choice.user_nickname, False).mention_markdown_v2()
         bot_message = who_choice_mention
@@ -127,7 +124,7 @@ class TelegramBot:
         """
 
         user_id = update.message.from_user.id
-        balance = str(get_user_balance(user_id) / 100)
+        balance = str(UserCRUD.get_user_balance(user_id) / 100)
         balance = escape_markdown(balance, 2)
         bot_message = f"Balance: *{balance}*"
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
@@ -158,6 +155,21 @@ class TelegramBot:
         else:
             reply = await update.message.reply_text("Please specify the variants.")
             context.job_queue.run_once(self.delete_messages, 10, data=[update.message, reply])
+
+    @auth_user
+    async def boosters_handler(self, update: Update, context: CallbackContext) -> None:
+        """
+        handler for /boosters
+
+        :param update:
+        :param context:
+        """
+        user_coins_per_msg, user_coins_per_min = UserCRUD.get_boosters_amount(update.message.from_user.id)
+        user_coins_per_msg = escape_markdown(str(user_coins_per_msg / 100), 2)
+        user_coins_per_min = escape_markdown(str(user_coins_per_min / 100), 2)
+        bot_message = f"Coins per MSG: *{user_coins_per_msg}*\nCoins per MIN: *{user_coins_per_min}*"
+        reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
+        context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~ ADDITIONAL FUNC ~~~~~~~~~~~~~~~~~~~~~~~~~~
     async def group_only_notification(self, update: Update, context: CallbackContext):

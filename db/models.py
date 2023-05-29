@@ -1,7 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy.sql import expression
-from config import logger, COINS_PER_MSG
+from config import COINS_PER_MSG
 
 from db.database import engine
 
@@ -22,7 +21,7 @@ class User(Base):
     def user_coins_per_msg(self):
         amount = COINS_PER_MSG
         for booster in self.boosters:
-            if booster.id in (1, 2):
+            if booster.booster_id in (1, 2):
                 amount += booster.total_bonus
         return amount
 
@@ -30,7 +29,7 @@ class User(Base):
     def user_coins_per_min(self):
         amount = 0
         for booster in self.boosters:
-            if booster.id in (3, 4, 5):
+            if booster.booster_id in (3, 4, 5):
                 amount += booster.total_bonus
         return amount
 
