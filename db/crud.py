@@ -4,7 +4,7 @@ from config import COINS_PER_MSG
 from sqlalchemy.orm import joinedload
 
 from db.database import Session
-from db.models import User, Booster, ActionCooldown, UserAction
+from db.models import User, Booster, ActionCooldown, UserAction, UserLevel
 
 
 class UserCRUD:
@@ -72,7 +72,7 @@ class UserActionCRUD:
                 session.add(action)
 
     @staticmethod
-    def edit_action_time(user_id: int, action_id: int):
+    def update_action_time(user_id: int, action_id: int):
         with Session() as session:
             with session.begin():
                 action_record = session.query(UserAction).filter_by(user=user_id, action=action_id).first()
@@ -110,6 +110,33 @@ class BoosterCRUD:
                 session.add_all(boosters_records)
 
 
+class UserLevelCRUD:
+    @staticmethod
+    def create_level(user_id):
+        with Session() as session:
+            with session.begin():
+                level = UserLevel(user_id=user_id)
+                session.add(level)
+
+    @staticmethod
+    def get_level(user_id):
+        with Session() as session:
+            level = session.query(UserLevel).filter_by(user_id=user_id).first()
+            if not level:
+                UserLevelCRUD.create_level(user_id)
+                level = session.query(UserLevel).filter_by(user_id=user_id).first()
+            return level
+
+    @staticmethod
+    def update_level(user_id, new_level, new_xp, new_xp_needed):
+        with Session() as session:
+            with session.begin():
+                level = session.query(UserLevel).filter_by(user_id=user_id).first()
+                level.level = new_level
+                level.xp = new_xp
+                level.xp_needed = new_xp_needed
+
+
 class ActionCooldownCRUD:
     @staticmethod
     def add_actions():
@@ -123,7 +150,7 @@ class ActionCooldownCRUD:
                     ActionCooldown(id=4, cooldown=30),  # crash
                     ActionCooldown(id=5, cooldown=30),  # roulette
                     ActionCooldown(id=6, cooldown=130),  # blackjack
-                    ActionCooldown(id=7, cooldown=30),  # msg
+                    ActionCooldown(id=7, cooldown=60),  # msg
                 ]
                 session.add_all(action_cooldown_records)
 

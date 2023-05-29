@@ -15,6 +15,7 @@ TELEGRAM_TOKEN = cfg.get("telegram_token", None)
 TELEGRAM_CHAT = cfg.get("telegram_chat", None)
 COINS_PER_MSG = cfg.get("coins_per_msg", None)
 
+xp_range = list(range(15, 26))
 # ---------------------- LOGGER ----------------------
 
 log_dir = "./log"

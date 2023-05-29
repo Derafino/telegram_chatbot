@@ -1,10 +1,13 @@
 import datetime
+import random
 import time
 
 from functools import wraps
 from typing import Callable, Coroutine, Any
 from telegram import Update
-from db.crud import UserCRUD, UserActionCRUD, ActionCooldownCRUD
+
+from config import xp_range
+from db.crud import UserCRUD, UserActionCRUD, ActionCooldownCRUD, UserLevelCRUD
 
 
 def cooldown_expired(user_id: int, action_id: int) -> bool:
@@ -53,6 +56,7 @@ def auth_user(command_handler: Callable[[Update, Any], Coroutine[Any, Any, None]
                 if last_name:
                     user_nickname += f" {last_name}"
                 UserCRUD.create_user(user_id, user_name, user_nickname)
+                UserLevelCRUD.create_level(user_id)
 
         return await command_handler(self, *args, **kwargs)
 
@@ -88,3 +92,14 @@ def add_coins_per_min():
     while True:
         time.sleep(60)
         UserCRUD.add_user_coins_per_min()
+
+
+def calc_xp(user_id):
+    user_level = UserLevelCRUD.get_level(user_id)
+    add_xp_amount = random.choice(xp_range)
+    user_level.xp += add_xp_amount
+    if user_level.xp >= user_level.xp_needed:
+        user_level.xp = user_level.xp - user_level.xp_needed
+        user_level.level += 1
+        user_level.xp_needed = 5 * (user_level.level ** 2) + (50 * user_level.level) + 100
+    UserLevelCRUD.update_level(user_id, user_level.level, user_level.xp, user_level.xp_needed)

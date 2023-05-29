@@ -58,6 +58,20 @@ class UserBooster(Base):
         return self.amount * self.booster.bonus_amount
 
 
+class UserLevel(Base):
+    __tablename__ = "users_level"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'))
+    level = Column(Integer, default=0)
+    xp = Column(Integer, default=0)
+    xp_needed = Column(Integer, default=100)
+
+    @property
+    def total_bonus(self):
+        return self.amount * self.booster.bonus_amount
+
+
 class ActionCooldown(Base):
     __tablename__ = "action_cooldown"
 

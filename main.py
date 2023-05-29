@@ -7,9 +7,9 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, CallbackContext, MessageHandler, filters
 from telegram.helpers import escape_markdown
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT, logger
-from db.crud import setup_database, UserCRUD, UserActionCRUD
+from db.crud import setup_database, UserCRUD, UserActionCRUD, UserLevelCRUD
 from games.magic_8_ball import magic_8_ball_phrase
-from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min
+from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min, calc_xp
 
 
 class TelegramBot:
@@ -31,7 +31,8 @@ class TelegramBot:
             CommandHandler('8ball', self.magic_8_ball_handler),
             CommandHandler('balance', self.balance_handler),
             CommandHandler('pick', self.pick_handler),
-            CommandHandler('boosters', self.boosters_handler)
+            CommandHandler('boosters', self.boosters_handler),
+            CommandHandler('level', self.level_handler)
 
         ]
         for handle in handlers:
@@ -74,7 +75,9 @@ class TelegramBot:
         user_id = update.message.from_user.id
         action_id = 7
         if cooldown_expired(user_id, action_id):
-            UserActionCRUD.edit_action_time(user_id=update.message.from_user.id, action_id=action_id)
+            UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
+
+            calc_xp(user_id)
             UserCRUD.add_user_coins_per_msg(user_id)
 
     @auth_user
@@ -168,6 +171,27 @@ class TelegramBot:
         user_coins_per_msg = escape_markdown(str(user_coins_per_msg / 100), 2)
         user_coins_per_min = escape_markdown(str(user_coins_per_min / 100), 2)
         bot_message = f"Coins per MSG: *{user_coins_per_msg}*\nCoins per MIN: *{user_coins_per_min}*"
+        reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
+        context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
+
+    @auth_user
+    async def level_handler(self, update: Update, context: CallbackContext) -> None:
+        """
+        handler for /level
+
+        :param update:
+        :param context:
+        """
+        user_id = update.message.from_user.id
+        user_level = UserLevelCRUD.get_level(user_id)
+        # user_level = SelectUser.user_existence(update.message.from_user.id).Level
+        percent = user_level.xp * 100 / user_level.xp_needed
+        percent -= percent % +10
+        percent = int(percent / 10)
+        string = f"|{'➖' * int(percent)}{'----' * int(10 - percent)}|"
+        text = f"Level: {user_level.level}\n" \
+               f"{string} {user_level.xp}/{user_level.xp_needed} XP\n"
+        bot_message = escape_markdown(text, 2)
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
 
