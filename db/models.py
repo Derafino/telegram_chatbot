@@ -52,6 +52,8 @@ class UserBooster(Base):
     user_id = Column(Integer, ForeignKey('users.user_id'))
     booster_id = Column(Integer, ForeignKey('boosters.id'))
     amount = Column(Integer)
+
+    booster = relationship("Booster")
     user = relationship("User", back_populates="boosters")
 
     @property

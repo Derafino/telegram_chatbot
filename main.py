@@ -212,7 +212,7 @@ class TelegramBot:
                 i = f' {i + 1}./'
             user_id = user.user_id
             user_nickname = user.user.user_nickname
-            user_mention = User(user_id, user_nickname, False).mention_markdown_v2()
+            user_mention = User(user_id, escape_markdown(user_nickname, 2), False).mention_markdown_v2()
             bot_message += f"{i} {user_mention}"
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
