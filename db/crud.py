@@ -136,6 +136,13 @@ class UserLevelCRUD:
                 level.xp = new_xp
                 level.xp_needed = new_xp_needed
 
+    @staticmethod
+    def get_top_users():
+        with Session() as session:
+            user_levels = session.query(UserLevel).options(joinedload(UserLevel.user)).order_by(
+                -UserLevel.level, -UserLevel.xp).limit(20).all()
+            return user_levels
+
 
 class ActionCooldownCRUD:
     @staticmethod

@@ -33,7 +33,8 @@ class TelegramBot:
             CommandHandler('balance', self.balance_handler),
             CommandHandler('pick', self.pick_handler),
             CommandHandler('boosters', self.boosters_handler),
-            CommandHandler('level', self.level_handler)
+            CommandHandler('level', self.level_handler),
+            CommandHandler('rating', self.rating_handler)
 
         ]
         for handle in handlers:
@@ -185,7 +186,6 @@ class TelegramBot:
         """
         user_id = update.message.from_user.id
         user_level = UserLevelCRUD.get_level(user_id)
-        # user_level = SelectUser.user_existence(update.message.from_user.id).Level
         percent = user_level.xp * 100 / user_level.xp_needed
         percent -= percent % +10
         percent = int(percent / 10)
@@ -193,6 +193,27 @@ class TelegramBot:
         text = f"Level: {user_level.level}\n" \
                f"{string} {user_level.xp}/{user_level.xp_needed} XP\n"
         bot_message = escape_markdown(text, 2)
+        reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
+        context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
+
+    @auth_user
+    @chat_only
+    async def rating_handler(self, update: Update, context: CallbackContext) -> None:
+        users = UserLevelCRUD.get_top_users()
+        bot_message = ''
+        for i, user in enumerate(users):
+            if i == 0:
+                i = '🥇'
+            elif i == 1:
+                i = '🥈'
+            elif i == 2:
+                i = '🥉'
+            else:
+                i = f' {i + 1}./'
+            user_id = user.user_id
+            user_nickname = user.user.user_nickname
+            user_mention = User(user_id, user_nickname, False).mention_markdown_v2()
+            bot_message += f"{i} {user_mention}"
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
 

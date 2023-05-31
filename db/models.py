@@ -15,7 +15,8 @@ class User(Base):
     user_nickname = Column(String, unique=True, nullable=False)
     user_coins = Column(Integer, default=0)
 
-    boosters = relationship("UserBooster")
+    boosters = relationship("UserBooster", back_populates="user")
+    user_level = relationship("UserLevel", back_populates="user")
 
     @property
     def user_coins_per_msg(self):
@@ -51,7 +52,7 @@ class UserBooster(Base):
     user_id = Column(Integer, ForeignKey('users.user_id'))
     booster_id = Column(Integer, ForeignKey('boosters.id'))
     amount = Column(Integer)
-    booster = relationship("Booster")
+    user = relationship("User", back_populates="boosters")
 
     @property
     def total_bonus(self):
@@ -66,6 +67,7 @@ class UserLevel(Base):
     level = Column(Integer, default=0)
     xp = Column(Integer, default=0)
     xp_needed = Column(Integer, default=100)
+    user = relationship("User", back_populates="user_level")
 
     @property
     def total_bonus(self):

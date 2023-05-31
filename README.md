@@ -50,3 +50,5 @@ Once the bot is running and the configuration is set up, you can start interacti
 `/boosters` - command displays information about active bonuses or boosters related to the chat bot.
 
 `/level` - command allows users to check their current level and experience points (XP) in the bot's system.
+
+`/rating` - command displays the top players with the highest levels in the bot's system.
