@@ -209,7 +209,7 @@ class TelegramBot:
             elif i == 2:
                 i = '🥉'
             else:
-                i = f' {i + 1}./'
+                i = f' {i + 1}\.'
             user_id = user.user_id
             user_nickname = user.user.user_nickname
             user_mention = User(user_id, escape_markdown(user_nickname, 2), False).mention_markdown_v2()
