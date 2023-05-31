@@ -24,7 +24,8 @@ class TelegramBot:
         self.app = Application.builder().token(token).build()
         self.chat_id = chat_id
         handlers = [
-            MessageHandler(filters.TEXT & (~filters.COMMAND), self.text_handler),
+            MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & ~filters.UpdateType.EDITED_MESSAGE,
+                           self.text_handler),
 
             CommandHandler('start', self.start_handler),
             CommandHandler('who', self.who_handler),

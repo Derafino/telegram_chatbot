@@ -63,15 +63,15 @@ def auth_user(command_handler: Callable[[Update, Any], Coroutine[Any, Any, None]
     return wrapper
 
 
-def chat_only(command_handler: Callable[[Update, Any], Coroutine[Any, Any, None]]) -> \
+def chat_only(handler: Callable[[Update, Any], Coroutine[Any, Any, None]]) -> \
         Callable[..., Coroutine[Any, Any, None]]:
-    @wraps(command_handler)
+    @wraps(handler)
     async def wrapper(self, *args, **kwargs):
         update = kwargs.get('update') or args[0]
         if update.effective_chat.type != 'supergroup' and update.effective_chat.type != 'supergroup':
             await self.group_only_notification(*args, **kwargs)
             return wrapper
-        return await command_handler(self, *args, **kwargs)
+        return await handler(self, *args, **kwargs)
 
     return wrapper
 
