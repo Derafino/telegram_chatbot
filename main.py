@@ -6,10 +6,12 @@ from telegram import Update, User
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, CallbackContext, MessageHandler, filters
 from telegram.helpers import escape_markdown
-from config import TELEGRAM_TOKEN, TELEGRAM_CHAT, logger
+from config import TELEGRAM_TOKEN, TELEGRAM_CHAT, logger, ANIME_PRICE, MSG_CD, WHO_CD, BALL8_CD, PICK_CD, RATING_CD, \
+    ANIME_CD
 from db.crud import setup_database, UserCRUD, UserActionCRUD, UserLevelCRUD
 from games.magic_8_ball import magic_8_ball_phrase
 from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min, calc_xp
+from modules.anime import choose_random_anime_image
 
 
 class TelegramBot:
@@ -34,7 +36,9 @@ class TelegramBot:
             CommandHandler('pick', self.pick_handler),
             CommandHandler('boosters', self.boosters_handler),
             CommandHandler('level', self.level_handler),
-            CommandHandler('rating', self.rating_handler)
+            CommandHandler('rating', self.rating_handler),
+            CommandHandler('anime', self.anime_handler),
+            CommandHandler('cd', self.cd_handler),
 
         ]
         for handle in handlers:
@@ -75,7 +79,7 @@ class TelegramBot:
         :param context:
         """
         user_id = update.message.from_user.id
-        action_id = 7
+        action_id = 1
         if cooldown_expired(user_id, action_id):
             UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
 
@@ -102,11 +106,18 @@ class TelegramBot:
         :param update:
         :param context:
         """
-        all_users = UserCRUD.get_all_users()
-        who_choice = random.choice(all_users)
-        who_choice_mention = User(who_choice.user_id, who_choice.user_nickname, False).mention_markdown_v2()
-        bot_message = who_choice_mention
-        await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
+        user_id = update.message.from_user.id
+        action_id = 2
+        if cooldown_expired(user_id, action_id):
+            UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
+
+            all_users = UserCRUD.get_all_users()
+            who_choice = random.choice(all_users)
+            who_choice_mention = User(who_choice.user_id, who_choice.user_nickname, False).mention_markdown_v2()
+            bot_message = who_choice_mention
+            await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
+        else:
+            context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
     @auth_user
     async def magic_8_ball_handler(self, update: Update, context: CallbackContext) -> None:
@@ -115,10 +126,17 @@ class TelegramBot:
         :param update:
         :param context:
         """
-        text = magic_8_ball_phrase()
-        text = escape_markdown(text, 2)
-        bot_message = f"||{text}||"
-        await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
+        user_id = update.message.from_user.id
+        action_id = 3
+        if cooldown_expired(user_id, action_id):
+            UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
+
+            text = magic_8_ball_phrase()
+            text = escape_markdown(text, 2)
+            bot_message = f"||{text}||"
+            await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
+        else:
+            context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
     @auth_user
     async def balance_handler(self, update: Update, context: CallbackContext) -> None:
@@ -145,21 +163,29 @@ class TelegramBot:
         :param update:
         :param context:
         """
-        if context.args:
-            user_text = ' '.join(context.args)
-            variants = user_text.split(',')
-            variants = [variant.strip() for variant in variants]
-            variants = [variant for variant in variants if variant]
-            if variants:
-                picked_variant = random.choice(variants)
-                await update.message.reply_text(f"The picked variant is: *{picked_variant}*",
-                                                parse_mode=ParseMode.MARKDOWN_V2)
+        user_id = update.message.from_user.id
+        action_id = 4
+        if cooldown_expired(user_id, action_id):
+
+            if context.args:
+                user_text = ' '.join(context.args)
+                variants = user_text.split(',')
+                variants = [variant.strip() for variant in variants]
+                variants = [variant for variant in variants if variant]
+                if variants:
+                    picked_variant = random.choice(variants)
+                    await update.message.reply_text(f"The picked variant is: *{picked_variant}*",
+                                                    parse_mode=ParseMode.MARKDOWN_V2)
+                    UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
+
+                else:
+                    reply = update.message.reply_text("No valid variants found.")
+                    context.job_queue.run_once(self.delete_messages, 10, data=[update.message, reply])
             else:
-                reply = update.message.reply_text("No valid variants found.")
+                reply = await update.message.reply_text("Please specify the variants.")
                 context.job_queue.run_once(self.delete_messages, 10, data=[update.message, reply])
         else:
-            reply = await update.message.reply_text("Please specify the variants.")
-            context.job_queue.run_once(self.delete_messages, 10, data=[update.message, reply])
+            context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
     @auth_user
     async def boosters_handler(self, update: Update, context: CallbackContext) -> None:
@@ -199,21 +225,69 @@ class TelegramBot:
     @auth_user
     @chat_only
     async def rating_handler(self, update: Update, context: CallbackContext) -> None:
-        users = UserLevelCRUD.get_top_users()
-        bot_message = ''
-        for i, user in enumerate(users):
-            if i == 0:
-                i = '🥇'
-            elif i == 1:
-                i = '🥈'
-            elif i == 2:
-                i = '🥉'
-            else:
-                i = f' {i + 1}\.'
-            user_id = user.user_id
-            user_nickname = user.user.user_nickname
-            user_mention = User(user_id, escape_markdown(user_nickname, 2), False).mention_markdown_v2()
-            bot_message += f"{i} {user_mention}\n"
+        """
+        handler for /rating
+
+        :param update:
+        :param context:
+        """
+        user_id = update.message.from_user.id
+        action_id = 5
+        if cooldown_expired(user_id, action_id):
+            UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
+
+            users = UserLevelCRUD.get_top_users()
+            bot_message = ''
+            for i, user in enumerate(users):
+                if i == 0:
+                    i = '🥇'
+                elif i == 1:
+                    i = '🥈'
+                elif i == 2:
+                    i = '🥉'
+                else:
+                    i = f' {i + 1}\.'
+                user_id = user.user_id
+                user_nickname = user.user.user_nickname
+                user_mention = User(user_id, escape_markdown(user_nickname, 2), False).mention_markdown_v2()
+                bot_message += f"{i} {user_mention}\n"
+            reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
+            context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
+        else:
+            context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
+
+    @auth_user
+    async def anime_handler(self, update: Update, context: CallbackContext) -> None:
+        """
+        handler for /anime
+
+        :param update:
+        :param context:
+        """
+        user_id = update.message.from_user.id
+        action_id = 6
+        if cooldown_expired(user_id, action_id):
+            if UserCRUD.pay_coins(user_id, ANIME_PRICE):
+                UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
+
+                await update.message.reply_photo(photo=choose_random_anime_image(), parse_mode=ParseMode.MARKDOWN_V2)
+        else:
+            context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
+
+    @auth_user
+    async def cd_handler(self, update: Update, context: CallbackContext) -> None:
+        """
+        handler for /cd
+
+        :param update:
+        :param context:
+        """
+        bot_message = f"MSG: *{MSG_CD}s*\n" \
+                      f"Who: *{WHO_CD}s*\n" \
+                      f"8ball: *{BALL8_CD}s*\n" \
+                      f"Pick: *{PICK_CD}s*\n" \
+                      f"Rating: *{RATING_CD}s*\n" \
+                      f"Anime: *{ANIME_CD}s*\n"
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
 

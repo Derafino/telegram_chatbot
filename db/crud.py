@@ -1,6 +1,6 @@
 import datetime
 from typing import List
-from config import COINS_PER_MSG
+from config import COINS_PER_MSG, MSG_CD, WHO_CD, BALL8_CD, PICK_CD, RATING_CD, ANIME_CD
 from sqlalchemy.orm import joinedload
 
 from db.database import Session
@@ -16,10 +16,15 @@ class UserCRUD:
                 session.add(user)
 
     @staticmethod
-    def check_user_exists(user_id: int) -> bool:
+    def get_user_by_id(user_id):
         with Session() as session:
             user = session.query(User).filter_by(user_id=user_id).first()
-            return user is not None
+            return user
+
+    @staticmethod
+    def check_user_exists(user_id: int) -> bool:
+        user = UserCRUD.get_user_by_id(user_id)
+        return user is not None
 
     @staticmethod
     def get_all_users() -> List[User]:
@@ -44,15 +49,14 @@ class UserCRUD:
 
     @staticmethod
     def get_user_balance(user_id) -> int:
-        with Session() as session:
-            user = session.query(User).filter_by(user_id=user_id).first()
-            return user.user_coins
+        user = UserCRUD.get_user_by_id(user_id)
+        return user.user_coins
 
     @staticmethod
     def add_coins(user_id: int, amount: int):
         with Session() as session:
             with session.begin():
-                user = session.query(User).filter_by(user_id=user_id).first()
+                user = UserCRUD.get_user_by_id(user_id)
                 user.user_coins += amount
 
     @staticmethod
@@ -60,6 +64,17 @@ class UserCRUD:
         with Session() as session:
             user = session.query(User).options(joinedload(User.boosters)).filter_by(user_id=user_id).first()
             return user.user_coins_per_msg, user.user_coins_per_min
+
+    @staticmethod
+    def pay_coins(user_id, n):
+        with Session() as session:
+            with session.begin():
+                user = UserCRUD.get_user_by_id(user_id)
+                if user.user_coins >= n:
+                    user.user_coins -= n
+                    session.add(user)
+                    return True
+        return False
 
 
 class UserActionCRUD:
@@ -151,13 +166,12 @@ class ActionCooldownCRUD:
             with session.begin():
                 session.query(ActionCooldown).delete()
                 action_cooldown_records = [
-                    ActionCooldown(id=1, cooldown=30),  # slot
-                    ActionCooldown(id=2, cooldown=30),  # bowling
-                    ActionCooldown(id=3, cooldown=30),  # pickpocket
-                    ActionCooldown(id=4, cooldown=30),  # crash
-                    ActionCooldown(id=5, cooldown=30),  # roulette
-                    ActionCooldown(id=6, cooldown=130),  # blackjack
-                    ActionCooldown(id=7, cooldown=60),  # msg
+                    ActionCooldown(id=1, cooldown=MSG_CD),  # msg
+                    ActionCooldown(id=2, cooldown=WHO_CD),  # who
+                    ActionCooldown(id=3, cooldown=BALL8_CD),  # 8ball
+                    ActionCooldown(id=4, cooldown=PICK_CD),  # pick
+                    ActionCooldown(id=5, cooldown=RATING_CD),  # rating
+                    ActionCooldown(id=6, cooldown=ANIME_CD),  # anime
                 ]
                 session.add_all(action_cooldown_records)
 

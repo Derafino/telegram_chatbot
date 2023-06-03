@@ -1,5 +1,15 @@
 {
   "telegram_token": "",
   "telegram_chat": 0,
-  "coins_per_msg": 1
+  "coins_per_msg": 1,
+  "anime_price": 10000,
+  "cooldown":
+  {
+    "msg": 60,
+    "who": 20,
+    "8ball": 10,
+    "pick": 10,
+    "rating": 30,
+    "anime": 30
+  }
 }
