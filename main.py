@@ -47,6 +47,8 @@ class TelegramBot:
             self.loop.run_until_complete(self.startup_telegram())
         except KeyboardInterrupt:
             self.loop.run_until_complete(self.shutdown_telegram())
+        except Exception as e:
+            logger.error(f"An error occurred: {str(e)}")
 
     async def startup_telegram(self) -> None:
 
