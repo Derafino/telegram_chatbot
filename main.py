@@ -458,8 +458,8 @@ class TelegramBot:
         user_balance = UserCRUD.get_user_balance(user_id)
 
         keyboard = []
-        user_name = UserCRUD.get_user_by_id(user_id).user_name
-        shop_text = f'{user_name}, welcome to the Shop!\n\n'
+        user_nickname = UserCRUD.get_user_by_id(user_id).user_nickname
+        shop_text = f'{user_nickname}, welcome to the Shop!\n\n'
         row = []
         buttons_per_row = 3
 
