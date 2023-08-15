@@ -8,12 +8,13 @@ from telegram.ext import Application, CommandHandler, CallbackContext, MessageHa
     CallbackQueryHandler
 from telegram.helpers import escape_markdown
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT, logger, ANIME_PRICE, MSG_CD, WHO_CD, BALL8_CD, PICK_CD, RATING_CD, \
-    ANIME_CD
-from db.crud import setup_database, UserCRUD, UserActionCRUD, UserLevelCRUD
+    ANIME_CD, min_bet
+from db.crud import setup_database, UserCRUD, UserActionCRUD, UserLevelCRUD, UsersBoostersCRUD
 from games.black_jack import sum_hand, deal_hand, deal_card, deck
 from games.magic_8_ball import magic_8_ball_phrase
-from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min, calc_xp
+from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min, calc_xp, validate_bet
 from modules.anime import choose_random_anime_image
+from modules.shop import SHOP_ITEMS, ShopItemBoosterMSG, ShopItemBoosterPerMin
 
 BLACKJACK = 0
 
@@ -43,6 +44,8 @@ class TelegramBot:
             CommandHandler('rating', self.rating_handler),
             CommandHandler('anime', self.anime_handler),
             CommandHandler('cd', self.cd_handler),
+            CommandHandler('shop', self.shop_handler),
+            CallbackQueryHandler(self.buy_callback, pattern='^buy_'),
             ConversationHandler(
                 entry_points=[CommandHandler('bj', self.bj_start_handler)],
                 states={
@@ -96,7 +99,7 @@ class TelegramBot:
         """
         user_id = update.message.from_user.id
         action_id = 1
-        if cooldown_expired(user_id, action_id):
+        if cooldown_expired(user_id, action_id) is True:
             UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
 
             calc_xp(user_id)
@@ -124,7 +127,9 @@ class TelegramBot:
         """
         user_id = update.message.from_user.id
         action_id = 2
-        if cooldown_expired(user_id, action_id):
+        cooldown = cooldown_expired(user_id, action_id)
+
+        if cooldown is True:
             UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
 
             all_users = UserCRUD.get_all_users()
@@ -133,6 +138,7 @@ class TelegramBot:
             bot_message = who_choice_mention
             await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         else:
+            print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
     @auth_user
@@ -144,7 +150,8 @@ class TelegramBot:
         """
         user_id = update.message.from_user.id
         action_id = 3
-        if cooldown_expired(user_id, action_id):
+        cooldown = cooldown_expired(user_id, action_id)
+        if cooldown is True:
             UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
 
             text = magic_8_ball_phrase()
@@ -152,6 +159,7 @@ class TelegramBot:
             bot_message = f"||{text}||"
             await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         else:
+            print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
     @auth_user
@@ -181,7 +189,8 @@ class TelegramBot:
         """
         user_id = update.message.from_user.id
         action_id = 4
-        if cooldown_expired(user_id, action_id):
+        cooldown = cooldown_expired(user_id, action_id)
+        if cooldown is True:
 
             if context.args:
                 user_text = ' '.join(context.args)
@@ -201,6 +210,7 @@ class TelegramBot:
                 reply = await update.message.reply_text("Please specify the variants.")
                 context.job_queue.run_once(self.delete_messages, 10, data=[update.message, reply])
         else:
+            print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
     @auth_user
@@ -249,11 +259,11 @@ class TelegramBot:
         """
         user_id = update.message.from_user.id
         action_id = 5
-        if cooldown_expired(user_id, action_id):
+        cooldown = cooldown_expired(user_id, action_id)
+        if cooldown is True:
             UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
 
             users = UserLevelCRUD.get_top_users()
-            logger.debug(users)
             bot_message = ''
             for i, user in enumerate(users):
                 if i == 0:
@@ -271,6 +281,7 @@ class TelegramBot:
             reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
             context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
         else:
+            print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
     @auth_user
@@ -283,12 +294,14 @@ class TelegramBot:
         """
         user_id = update.message.from_user.id
         action_id = 6
-        if cooldown_expired(user_id, action_id):
+        cooldown = cooldown_expired(user_id, action_id)
+        if cooldown is True:
             if UserCRUD.pay_coins(user_id, ANIME_PRICE):
                 UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
 
                 await update.message.reply_photo(photo=choose_random_anime_image(), parse_mode=ParseMode.MARKDOWN_V2)
         else:
+            print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
     @auth_user
@@ -317,27 +330,45 @@ class TelegramBot:
         :param update:
         :param context:
         """
+        if context.args and validate_bet(context.args[0], min_bet):
+            bet = int(context.args[0]) * 100
 
-        player_hand = deal_hand(deck)
-        dealer_hand = deal_hand(deck)
+        else:
+            await update.message.reply_text(f'You must provide a bet of at least {int(min_bet / 100)} coins.')
+            return ConversationHandler.END
+        user_id = update.message.from_user.id
+        action_id = 7
+        cooldown = cooldown_expired(user_id, action_id)
+        if cooldown is True:
+            if UserCRUD.pay_coins(user_id, bet):
+                UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
+                player_hand = deal_hand(deck)
+                dealer_hand = deal_hand(deck)
 
-        context.user_data['player_hand'] = player_hand
-        context.user_data['dealer_hand'] = dealer_hand
+                context.user_data['player_hand'] = player_hand
+                context.user_data['dealer_hand'] = dealer_hand
+                context.user_data['bet'] = bet
 
-        keyboard = [
-            [InlineKeyboardButton('Hit', callback_data='hit'),
-             InlineKeyboardButton('Stand', callback_data='stand')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+                keyboard = [
+                    [InlineKeyboardButton('Hit', callback_data='hit'),
+                     InlineKeyboardButton('Stand', callback_data='stand')]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
 
-        message = await update.message.reply_text(f'Your hand: {player_hand}, total: {sum_hand(player_hand)}\n'
-                                                  f'Dealer hand: {dealer_hand}, total: {sum_hand(dealer_hand)}\n'
-                                                  f'Hit or Stand? ',
-                                                  reply_markup=reply_markup)
-        context.user_data['message_id'] = message.message_id
-        context.user_data['player_id'] = message.from_user.id
+                message = await update.message.reply_text(f'Your hand: {player_hand}, total: {sum_hand(player_hand)}\n'
+                                                          f'Dealer hand: {dealer_hand}, total: {sum_hand(dealer_hand)}\n'
+                                                          f'Hit or Stand? ',
+                                                          reply_markup=reply_markup)
+                context.user_data['message_id'] = message.message_id
+                context.user_data['player_id'] = user_id
 
-        return BLACKJACK
+                return BLACKJACK
+            else:
+                await update.message.reply_text('You do not have enough coins for that bet.')
+                return ConversationHandler.END
+        else:
+            await update.message.reply_text(f'wait {cooldown} sec')
+            return ConversationHandler.END
 
     @auth_user
     async def bj_hit_handler(self, update: Update, context: CallbackContext) -> int:
@@ -363,6 +394,7 @@ class TelegramBot:
                                                     message_id=context.user_data['message_id'],
                                                     text=f'Your hand: {player_hand}, total: {sum_hand(player_hand)}\n'
                                                          f'Blackjack! You win.')
+                UserCRUD.add_coins(context.user_data['player_id'], context.user_data['bet'] * 2)
                 return ConversationHandler.END
             else:
                 await context.bot.edit_message_text(chat_id=update.effective_chat.id,
@@ -391,6 +423,7 @@ class TelegramBot:
                                                          f'Dealer\'s hand: {dealer_hand}, '
                                                          f'total: {sum_hand(dealer_hand)}\n'
                                                          f'Dealer busts! You win.')
+                UserCRUD.add_coins(context.user_data['player_id'], context.user_data['bet'] * 2)
             elif sum_hand(dealer_hand) < sum_hand(player_hand):
                 await context.bot.edit_message_text(chat_id=update.effective_chat.id,
                                                     message_id=context.user_data['message_id'],
@@ -399,6 +432,7 @@ class TelegramBot:
                                                          f'Dealer\'s hand: {dealer_hand}, '
                                                          f'total: {sum_hand(dealer_hand)}\n'
                                                          f'You win!')
+                UserCRUD.add_coins(context.user_data['player_id'], context.user_data['bet'] * 2)
             elif sum_hand(dealer_hand) > sum_hand(player_hand):
                 await context.bot.edit_message_text(chat_id=update.effective_chat.id,
                                                     message_id=context.user_data['message_id'],
@@ -415,8 +449,85 @@ class TelegramBot:
                                                          f'Dealer\'s hand: {dealer_hand}, '
                                                          f'total: {sum_hand(dealer_hand)}\n'
                                                          f'Push. It\'s a tie.')
+                UserCRUD.add_coins(context.user_data['player_id'], context.user_data['bet'])
 
             return ConversationHandler.END
+
+    @staticmethod
+    async def generate_shop_message(user_id):
+        user_balance = UserCRUD.get_user_balance(user_id)
+
+        keyboard = []
+        user_name = UserCRUD.get_user_by_id(user_id).user_name
+        shop_text = f'{user_name}, welcome to the Shop!\n\n'
+        row = []
+        buttons_per_row = 3
+
+        for i, (item_key, item_details) in enumerate(SHOP_ITEMS.items()):
+            if i % buttons_per_row == 0 and row:
+                keyboard.append(row)
+                row = []
+            if isinstance(item_details, ShopItemBoosterMSG) or isinstance(item_details, ShopItemBoosterPerMin):
+                booster_count = UsersBoostersCRUD.get_booster_count(user_id, item_details.booster_id)
+                shop_text += f"{i + 1}. " + \
+                             f"{item_details.name} - {item_details.calculate_price(booster_count) / 100} 💵\n" \
+                             f"\t\t\t{item_details.display_info(amount=item_details.bonus_amount, count=booster_count)}\n"
+            else:
+                shop_text += f"{i + 1}. " + item_details.display_info() + "\n"
+
+            row.append(InlineKeyboardButton(str(i + 1), callback_data=f"buy_{item_key}"))
+
+        if row:
+            keyboard.append(row)
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        shop_text += f"\nYour balance: {user_balance / 100} coins"
+
+        return shop_text, reply_markup
+
+    @auth_user
+    async def shop_handler(self, update: Update, context: CallbackContext) -> None:
+        shop_message, reply_markup = await self.generate_shop_message(update.message.from_user.id)
+        await update.message.reply_text(shop_message, reply_markup=reply_markup)
+        context.user_data['shop_user_id'] = update.message.from_user.id
+
+    async def buy_callback(self, update: Update, context: CallbackContext) -> None:
+        user_id = update.callback_query.from_user.id
+        if 'shop_user_id' in context.user_data and \
+                context.user_data['shop_user_id'] == user_id:
+            item_id = update.callback_query.data.split('_')[1]
+            if item_id not in SHOP_ITEMS:
+                await update.callback_query.answer("Invalid item!")
+                return
+
+            user_balance = UserCRUD.get_user_balance(user_id)
+
+            if isinstance(SHOP_ITEMS[item_id], ShopItemBoosterMSG) or isinstance(SHOP_ITEMS[item_id],
+                                                                                 ShopItemBoosterPerMin):
+                booster_count = UsersBoostersCRUD.get_booster_count(user_id, SHOP_ITEMS[item_id].booster_id)
+                price = SHOP_ITEMS[item_id].calculate_price(booster_count)
+            else:
+                price = SHOP_ITEMS[item_id].calculate_price()
+
+            if user_balance < price:
+                await update.callback_query.answer("You don't have enough coins!")
+                return
+
+            logger.debug(f"BUY {update.callback_query.from_user.id} {item_id} {price}")
+            if UserCRUD.pay_coins(
+                    user_id, price):
+                if isinstance(SHOP_ITEMS[item_id], ShopItemBoosterMSG) or isinstance(SHOP_ITEMS[item_id],
+                                                                                     ShopItemBoosterPerMin):
+                    UsersBoostersCRUD.increment_or_create(user_id, SHOP_ITEMS[item_id].booster_id)
+                else:
+                    pass
+
+            shop_message, reply_markup = await self.generate_shop_message(update.callback_query.from_user.id)
+            await update.callback_query.edit_message_text(shop_message, reply_markup=reply_markup)
+
+            await update.callback_query.answer(f"You've successfully purchased {SHOP_ITEMS[item_id].name}!")
+        else:
+            await update.callback_query.answer("You're not authorized to interact with this menu!")
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~ ADDITIONAL FUNC ~~~~~~~~~~~~~~~~~~~~~~~~~~
     async def group_only_notification(self, update: Update, context: CallbackContext):

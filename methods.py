@@ -3,26 +3,30 @@ import random
 import time
 
 from functools import wraps
-from typing import Callable, Coroutine, Any
+from typing import Callable, Coroutine, Any, Union
 from telegram import Update
 
-from config import xp_range
+from config import xp_range, logger
 from db.crud import UserCRUD, UserActionCRUD, ActionCooldownCRUD, UserLevelCRUD
 
 
-def cooldown_expired(user_id: int, action_id: int) -> bool:
-    now = datetime.datetime.now()
+def cooldown_expired(user_id: int, action_id: int) -> Union[bool, int]:
     cooldown = ActionCooldownCRUD.get_cooldown(action_id)
     last_action_time = UserActionCRUD.get_last_action(user_id, action_id)
     if last_action_time:
-        remaining_time = last_action_time.timestamp() + cooldown - now.timestamp()
+        remaining_time = calculate_remaining_time(last_action_time, cooldown)
         if remaining_time < 0:
             return True
         else:
-            return False
+            return int(remaining_time)
     else:
         UserActionCRUD.add_action(user_id, action_id)
         return True
+
+
+def calculate_remaining_time(last_action_time, cooldown):
+    now = datetime.datetime.now()
+    return last_action_time.timestamp() + cooldown - now.timestamp()
 
 
 def auth_user(command_handler: Callable[[Update, Any], Coroutine[Any, Any, None]]):
@@ -36,6 +40,7 @@ def auth_user(command_handler: Callable[[Update, Any], Coroutine[Any, Any, None]
         else:
             chat_id = int(update.message.chat_id)
             user_id = int(update.message.from_user.id)
+        logger.debug(f"user ({user_id}) triggers handler ({command_handler.__name__})")
         all_users = UserCRUD.get_all_users()
         all_users = [i.user_id for i in all_users]
         if chat_id != self.chat_id and chat_id not in all_users:
@@ -103,3 +108,10 @@ def calc_xp(user_id):
         user_level.level += 1
         user_level.xp_needed = 5 * (user_level.level ** 2) + (50 * user_level.level) + 100
     UserLevelCRUD.update_level(user_id, user_level.level, user_level.xp, user_level.xp_needed)
+
+
+def validate_bet(bet, min_bet):
+    if bet.isdigit() and int(bet) * 100 >= min_bet:
+        return True
+    else:
+        return False

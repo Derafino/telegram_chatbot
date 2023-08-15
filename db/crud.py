@@ -1,10 +1,12 @@
 import datetime
+import json
+import os
 from typing import List
-from config import COINS_PER_MSG, MSG_CD, WHO_CD, BALL8_CD, PICK_CD, RATING_CD, ANIME_CD
+from config import COINS_PER_MSG, MSG_CD, WHO_CD, BALL8_CD, PICK_CD, RATING_CD, ANIME_CD, BJ_CD, logger
 from sqlalchemy.orm import joinedload
 
 from db.database import Session
-from db.models import User, Booster, ActionCooldown, UserAction, UserLevel
+from db.models import User, Booster, ActionCooldown, UserAction, UserLevel, UserBooster
 
 
 class UserCRUD:
@@ -38,6 +40,7 @@ class UserCRUD:
             with session.begin():
                 users = session.query(User).options(joinedload(User.boosters)).all()
                 for user in users:
+                    logger.debug(f"{user.user_id} +{user.user_coins_per_min} {user.user_coins}")
                     user.user_coins += user.user_coins_per_min
 
     @staticmethod
@@ -46,6 +49,7 @@ class UserCRUD:
             with session.begin():
                 user = session.query(User).options(joinedload(User.boosters)).filter_by(user_id=user_id).first()
                 user.user_coins += (user.user_coins_per_msg + COINS_PER_MSG)
+                logger.debug(f"{user_id} +{COINS_PER_MSG} {user.user_coins}")
 
     @staticmethod
     def get_user_balance(user_id) -> int:
@@ -55,9 +59,10 @@ class UserCRUD:
     @staticmethod
     def add_coins(user_id: int, amount: int):
         with Session() as session:
-            with session.begin():
-                user = UserCRUD.get_user_by_id(user_id)
-                user.user_coins += amount
+            logger.debug(f"{user_id} +{amount}")
+            user = session.query(User).filter_by(user_id=user_id).first()
+            user.user_coins += amount
+            session.commit()
 
     @staticmethod
     def get_boosters_amount(user_id):
@@ -68,13 +73,21 @@ class UserCRUD:
     @staticmethod
     def pay_coins(user_id, n):
         with Session() as session:
-            with session.begin():
-                user = UserCRUD.get_user_by_id(user_id)
-                if user.user_coins >= n:
-                    user.user_coins -= n
-                    session.add(user)
-                    return True
-        return False
+            user = session.query(User).filter_by(user_id=user_id).first()
+            if user is None:
+                logger.error(f"No user found with ID {user_id}")
+                return False
+
+            logger.info(f"User {user_id} has {user.user_coins} coins")
+
+            if user.user_coins >= n:
+                user.user_coins -= n
+                session.commit()
+                logger.info(f"Subtracted {n} coins from user {user_id}. New balance: {user.user_coins}")
+                return True
+            else:
+                logger.info(f"User {user_id} does not have enough coins")
+                return False
 
 
 class UserActionCRUD:
@@ -110,19 +123,17 @@ class UserActionCRUD:
 
 class BoosterCRUD:
     @staticmethod
-    def add_boosters():
+    def add_boosters(boosters: List[Booster]):
         with Session() as session:
             with session.begin():
                 session.query(Booster).delete()
-                boosters_records = [
-                    Booster(id=1, booster_name='booster_name_msg1', booster_type=1, bonus_amount=5, base_price=10),
-                    Booster(id=2, booster_name='booster_name_msg2', booster_type=1, bonus_amount=10, base_price=20),
+                session.add_all(boosters)
 
-                    Booster(id=3, booster_name='booster_name_time1', booster_type=2, bonus_amount=2, base_price=5),
-                    Booster(id=4, booster_name='booster_name_time2', booster_type=2, bonus_amount=4, base_price=10),
-                    Booster(id=5, booster_name='booster_name_time3', booster_type=2, bonus_amount=8, base_price=20),
-                ]
-                session.add_all(boosters_records)
+    @staticmethod
+    def get_all_boosters() -> List[Booster]:
+        with Session() as session:
+            boosters = session.query(Booster).all()
+            return boosters
 
 
 class UserLevelCRUD:
@@ -146,6 +157,7 @@ class UserLevelCRUD:
     def update_level(user_id, new_level, new_xp, new_xp_needed):
         with Session() as session:
             with session.begin():
+                logger.debug(f"{user_id} {new_level} {new_xp}")
                 level = session.query(UserLevel).filter_by(user_id=user_id).first()
                 level.level = new_level
                 level.xp = new_xp
@@ -172,6 +184,7 @@ class ActionCooldownCRUD:
                     ActionCooldown(id=4, cooldown=PICK_CD),  # pick
                     ActionCooldown(id=5, cooldown=RATING_CD),  # rating
                     ActionCooldown(id=6, cooldown=ANIME_CD),  # anime
+                    ActionCooldown(id=7, cooldown=BJ_CD),  # bj
                 ]
                 session.add_all(action_cooldown_records)
 
@@ -184,6 +197,32 @@ class ActionCooldownCRUD:
         return cooldown
 
 
+class UsersBoostersCRUD:
+    @staticmethod
+    def get_booster_count(user_id, booster_id):
+        with Session() as session:
+            booster_record = session.query(UserBooster).filter_by(user_id=user_id, booster_id=booster_id).first()
+            return booster_record.amount if booster_record else 0
+
+    @staticmethod
+    def increment_or_create(user_id, booster_id):
+        with Session() as session:
+            booster_record = session.query(UserBooster).filter_by(user_id=user_id, booster_id=booster_id).first()
+
+            if booster_record:
+                booster_record.amount += 1
+            else:
+                new_booster = UserBooster(user_id=user_id, booster_id=booster_id, amount=1)
+                session.add(new_booster)
+
+            session.commit()
+
+
 def setup_database():
-    BoosterCRUD.add_boosters()
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(current_dir, "..", "boosters.json")
+    with open(file_path, 'r', encoding="UTF-8") as f:
+        boosters = json.load(f)
+    boosters = [Booster(**b) for b in boosters['boosters']]
+    BoosterCRUD.add_boosters(boosters)
     ActionCooldownCRUD.add_actions()

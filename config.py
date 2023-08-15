@@ -24,8 +24,12 @@ if COOLDOWN:
     PICK_CD = COOLDOWN.get("pick", 10)
     RATING_CD = COOLDOWN.get("rating", 30)
     ANIME_CD = COOLDOWN.get("anime", 30)
+    BJ_CD = COOLDOWN.get("bj", 30)
 
 xp_range = list(range(15, 26))
+
+min_bet = 1000
+
 # ---------------------- LOGGER ----------------------
 
 anime_path = "./anime"
