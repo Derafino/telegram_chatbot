@@ -36,12 +36,12 @@ def save_to_file(events: list[dict]):
 
 def read_from_file() -> list[dict] | None:
     if not os.path.exists(FILENAME):
-        return None
+        return []
     with open(FILENAME, 'r') as f:
         return json.load(f)
 
 
-def print_new_events(fetched_events: list[dict], saved_events: list[dict]):
+def print_new_events(fetched_events: list[dict], saved_events: list):
     new_events = [event for event in fetched_events if event not in saved_events]
     for event in new_events:
         message = f"🚀 *{escape_markdown('New Steam Event!', 2)}* 🚀\n" \
