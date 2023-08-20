@@ -6,7 +6,7 @@ from functools import wraps
 from typing import Callable, Coroutine, Any, Union
 from telegram import Update
 
-from config import xp_range, logger
+from config import xp_range, logger, ADMINS
 from db.crud import UserCRUD, UserActionCRUD, ActionCooldownCRUD, UserLevelCRUD
 
 
@@ -93,13 +93,24 @@ def private_only(command_handler: Callable[[Update, Any], Coroutine[Any, Any, No
     return wrapper
 
 
+def admin_only(command_handler: Callable[[Update, Any], Coroutine[Any, Any, None]]):
+    @wraps(command_handler)
+    async def wrapper(self, *args, **kwargs):
+        update = kwargs.get('update') or args[0]
+        if update.effective_user.id not in ADMINS:
+            return wrapper
+        return await command_handler(self, *args, **kwargs)
+
+    return wrapper
+
+
 def add_coins_per_min():
     while True:
         time.sleep(60)
         UserCRUD.add_user_coins_per_min()
 
 
-def calc_xp(user_id):
+def calc_xp(user_id: int):
     user_level = UserLevelCRUD.get_level(user_id)
     add_xp_amount = random.choice(xp_range)
     user_level.xp += add_xp_amount
@@ -110,8 +121,17 @@ def calc_xp(user_id):
     UserLevelCRUD.update_level(user_id, user_level.level, user_level.xp, user_level.xp_needed)
 
 
-def validate_bet(bet, min_bet):
+def validate_bet(bet: str, min_bet: int) -> bool:
     if bet.isdigit() and int(bet) * 100 >= min_bet:
         return True
     else:
         return False
+
+
+def rate_limited(func: Callable[[Update, Any], Coroutine[Any, Any, None]]) -> Callable[..., Coroutine[Any, Any, None]]:
+    @wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        await self.rate_limiter.acquire()
+        return await func(self, *args, **kwargs)
+
+    return wrapper

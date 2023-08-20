@@ -94,4 +94,14 @@ class UserAction(Base):
     __table_args__ = (UniqueConstraint('action', 'user'),)
 
 
+class Notification(Base):
+    __tablename__ = 'notifications'
+
+    id = Column(Integer, primary_key=True)
+    text = Column(String)
+    image_url = Column(String)
+    regularity = Column(String)
+    time = Column(DateTime)
+
+
 Base.metadata.create_all(engine)

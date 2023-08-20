@@ -1,8 +1,10 @@
 import json
 import os
 import sys
-
+import queue
 from loguru import logger
+
+message_queue = queue.Queue()
 
 
 def settings():
@@ -13,6 +15,7 @@ def settings():
 cfg = settings()
 TELEGRAM_TOKEN = cfg.get("telegram_token", None)
 TELEGRAM_CHAT = cfg.get("telegram_chat", None)
+ADMINS = cfg.get("admins", None)
 COINS_PER_MSG = cfg.get("coins_per_msg", None)
 ANIME_PRICE = cfg.get("anime_price", 10000)
 

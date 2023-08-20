@@ -2,21 +2,48 @@ import asyncio
 import random
 import threading
 
-from telegram import Update, User, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, User, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, CallbackContext, MessageHandler, filters, ConversationHandler, \
     CallbackQueryHandler
 from telegram.helpers import escape_markdown
+
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT, logger, ANIME_PRICE, MSG_CD, WHO_CD, BALL8_CD, PICK_CD, RATING_CD, \
-    ANIME_CD, min_bet
+    ANIME_CD, min_bet, message_queue
 from db.crud import setup_database, UserCRUD, UserActionCRUD, UserLevelCRUD, UsersBoostersCRUD
 from games.black_jack import sum_hand, deal_hand, deal_card, deck
 from games.magic_8_ball import magic_8_ball_phrase
-from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min, calc_xp, validate_bet
+from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min, calc_xp, validate_bet, rate_limited
 from modules.anime import choose_random_anime_image
+from modules.epic_games import check_epic
 from modules.shop import SHOP_ITEMS, ShopItemBoosterMSG, ShopItemBoosterPerMin
+from modules.steam_events import check_steam_events
 
 BLACKJACK = 0
+TEXT, IMAGE, IMAGE_WAITING, REGULARITY, DELAY, TIME = range(6)
+
+
+class RateLimiter:
+    def __init__(self, rate: int, capacity: int):
+        self.rate = rate
+        self.capacity = capacity
+        self.tokens = capacity
+        self.last_refill = asyncio.get_event_loop().time()
+
+    async def acquire(self):
+        while self.tokens <= 0:
+            self._refill()
+            if self.tokens <= 0:
+                await asyncio.sleep(1)
+        self.tokens -= 1
+
+    def _refill(self):
+        now = asyncio.get_event_loop().time()
+        time_delta = now - self.last_refill
+
+        new_tokens = time_delta * self.rate
+        self.tokens = min(self.tokens + new_tokens, self.capacity)
+        self.last_refill = now
 
 
 class TelegramBot:
@@ -30,10 +57,8 @@ class TelegramBot:
 
         self.app = Application.builder().token(token).build()
         self.chat_id = chat_id
+        self.rate_limiter = RateLimiter(rate=1, capacity=30)
         handlers = [
-            MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & ~filters.UpdateType.EDITED_MESSAGE,
-                           self.text_handler),
-
             CommandHandler('start', self.start_handler),
             CommandHandler('who', self.who_handler),
             CommandHandler('8ball', self.magic_8_ball_handler),
@@ -55,7 +80,11 @@ class TelegramBot:
                     ]
                 },
                 fallbacks=[CommandHandler('start', self.bj_start_handler)],
-            )
+                per_message=True
+            ),
+
+            MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & ~filters.UpdateType.EDITED_MESSAGE,
+                           self.text_handler)
 
         ]
         for handle in handlers:
@@ -82,6 +111,14 @@ class TelegramBot:
                 if not self.app.updater.running:
                     break
 
+                while not message_queue.empty():
+                    data = message_queue.get()
+                    logger.debug(data)
+                    if len(data['photos']) == 1:
+                        await self.bot_send_photo(photo_url=data['photos'][0], text=data['message'])
+                    else:
+                        await self.bot_send_media_group(media_urls=data['photos'], text=data['message'])
+
     async def shutdown_telegram(self) -> None:
         if self.app.updater:
             await self.app.updater.stop()
@@ -105,6 +142,7 @@ class TelegramBot:
             calc_xp(user_id)
             UserCRUD.add_user_coins_per_msg(user_id)
 
+    @rate_limited
     @auth_user
     async def start_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -114,9 +152,9 @@ class TelegramBot:
         """
         bot_message = 'Hello'
         chat_id = update.message.chat_id
-
         await self.app.bot.send_message(chat_id, text=bot_message)
 
+    @rate_limited
     @auth_user
     @chat_only
     async def who_handler(self, update: Update, context: CallbackContext) -> None:
@@ -141,6 +179,7 @@ class TelegramBot:
             print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
+    @rate_limited
     @auth_user
     async def magic_8_ball_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -162,6 +201,7 @@ class TelegramBot:
             print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
+    @rate_limited
     @auth_user
     async def balance_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -177,6 +217,7 @@ class TelegramBot:
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
 
+    @rate_limited
     @auth_user
     async def pick_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -213,6 +254,7 @@ class TelegramBot:
             print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
+    @rate_limited
     @auth_user
     async def boosters_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -228,6 +270,7 @@ class TelegramBot:
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
 
+    @rate_limited
     @auth_user
     async def level_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -248,6 +291,7 @@ class TelegramBot:
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
 
+    @rate_limited
     @auth_user
     @chat_only
     async def rating_handler(self, update: Update, context: CallbackContext) -> None:
@@ -284,6 +328,7 @@ class TelegramBot:
             print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
+    @rate_limited
     @auth_user
     async def anime_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -304,6 +349,7 @@ class TelegramBot:
             print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
+    @rate_limited
     @auth_user
     async def cd_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -322,6 +368,7 @@ class TelegramBot:
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~ BLACK JACK ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    @rate_limited
     @auth_user
     async def bj_start_handler(self, update: Update, context: CallbackContext) -> int:
         """
@@ -370,8 +417,15 @@ class TelegramBot:
             await update.message.reply_text(f'wait {cooldown} sec')
             return ConversationHandler.END
 
+    @rate_limited
     @auth_user
     async def bj_hit_handler(self, update: Update, context: CallbackContext) -> int:
+        """
+        handler for black jack hit callback
+
+        :param update:
+        :param context:
+        """
         if context.user_data['player_id'] == update.callback_query.from_user.id:
             player_hand = context.user_data['player_hand']
             player_hand.append(deal_card(deck))
@@ -406,8 +460,15 @@ class TelegramBot:
 
                 return BLACKJACK
 
+    @rate_limited
     @auth_user
     async def bj_stand_handler(self, update: Update, context: CallbackContext) -> int:
+        """
+        handler for black jack stand callback
+
+        :param update:
+        :param context:
+        """
         if context.user_data['player_id'] == update.callback_query.from_user.id:
             player_hand = context.user_data['player_hand']
             dealer_hand = context.user_data['dealer_hand']
@@ -453,8 +514,9 @@ class TelegramBot:
 
             return ConversationHandler.END
 
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~ SHOP ~~~~~~~~~~~~~~~~~~~~~~~~~~
     @staticmethod
-    async def generate_shop_message(user_id):
+    async def generate_shop_message(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
         user_balance = UserCRUD.get_user_balance(user_id)
 
         keyboard = []
@@ -485,13 +547,27 @@ class TelegramBot:
 
         return shop_text, reply_markup
 
+    @rate_limited
     @auth_user
     async def shop_handler(self, update: Update, context: CallbackContext) -> None:
+        """
+        handler for /shop
+
+        :param update:
+        :param context:
+        """
         shop_message, reply_markup = await self.generate_shop_message(update.message.from_user.id)
         await update.message.reply_text(shop_message, reply_markup=reply_markup)
         context.user_data['shop_user_id'] = update.message.from_user.id
 
+    @rate_limited
     async def buy_callback(self, update: Update, context: CallbackContext) -> None:
+        """
+        handler for buy_item callback
+
+        :param update:
+        :param context:
+        """
         user_id = update.callback_query.from_user.id
         if 'shop_user_id' in context.user_data and \
                 context.user_data['shop_user_id'] == user_id:
@@ -530,6 +606,40 @@ class TelegramBot:
             await update.callback_query.answer("You're not authorized to interact with this menu!")
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~ ADDITIONAL FUNC ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    async def bot_send_message(self, text: str) -> None:
+        """
+         send message with provided text
+
+         :param text:
+         """
+        await self.app.bot.send_message(chat_id=self.chat_id, text=text, parse_mode=ParseMode.MARKDOWN_V2)
+
+    @rate_limited
+    async def bot_send_photo(self, photo_url: str, text: str) -> None:
+        """
+        send photo by provided url
+
+        :param photo_url:
+        :param text:
+        """
+        photo = [InputMediaPhoto(photo_url, caption=text, parse_mode=ParseMode.MARKDOWN_V2)]
+        await self.app.bot.send_media_group(chat_id=self.chat_id, media=photo)
+
+    @rate_limited
+    async def bot_send_media_group(self, media_urls: list, text: str) -> None:
+        """
+        send media group by provided list of urls
+
+        :param media_urls:
+        :param text:
+        """
+        logger.debug(text)
+        logger.debug(media_urls[0])
+        media = [InputMediaPhoto(media_urls[0], caption=text, parse_mode=ParseMode.MARKDOWN_V2)]
+        for url in media_urls[1:]:
+            media.append(InputMediaPhoto(url))
+        await self.app.bot.send_media_group(chat_id=self.chat_id, media=media)
+
     async def group_only_notification(self, update: Update, context: CallbackContext):
         """
         send notification that command can be used only on group chat
@@ -557,6 +667,7 @@ class TelegramBot:
         :param context:
         """
         messages = context.job.data
+        logger.debug(messages)
         for msg in messages:
             try:
                 await msg.delete()
@@ -568,5 +679,11 @@ if __name__ == '__main__':
     setup_database()
     bonus_per_min_thread = threading.Thread(target=add_coins_per_min, daemon=True)
     bonus_per_min_thread.start()
+
+    check_epic_thread = threading.Thread(target=check_epic, daemon=True)
+    check_epic_thread.start()
+
+    check_steam_events_thread = threading.Thread(target=check_steam_events, daemon=True)
+    check_steam_events_thread.start()
 
     TelegramBot(TELEGRAM_TOKEN, TELEGRAM_CHAT)
