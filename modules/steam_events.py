@@ -47,7 +47,6 @@ def print_new_events(fetched_events: list[dict], saved_events: list):
         message = f"🚀 *{escape_markdown('New Steam Event!', 2)}* 🚀\n" \
                   f"🎮 *Title:* {escape_markdown(event['title'], 2)}\n" \
                   f"🔗 *Items:* [Click Here]({event['link']})"
-        print(message)
         data = {'message': message, 'photos': [event['enclosure_url']]}
         message_queue.put(data)
 

@@ -38,11 +38,12 @@ def compare_and_notify(current_games, saved_games):
             if i['promotions']['promotionalOffers']:
 
                 start_date = i['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['startDate']
+                effective_date = i['effectiveDate']
+                effective_date = datetime.strptime(effective_date, "%Y-%m-%dT%H:%M:%S.%fZ")
                 start_date = datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%S.%fZ")
                 end_date = i['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['endDate']
                 end_date = datetime.strptime(end_date, "%Y-%m-%dT%H:%M:%S.%fZ")
-
-                if start_date < datetime.now() < end_date:
+                if end_date > datetime.now() > start_date == effective_date:
                     game = {'title': i['title'], 'url': url, 'start_date': int(start_date.timestamp()),
                             'end_date': int(end_date.timestamp()),
                             'img_url': img_url}
@@ -57,6 +58,7 @@ def compare_and_notify(current_games, saved_games):
 
     if games != saved_games:
         cur_games = [i for i in games if i['start_date'] < datetime.now().timestamp() < i['end_date']]
+
         future_games = [i for i in games if datetime.now().timestamp() < i['start_date']]
         message = f'🎮 *Epic Games Free Games* 🎮:\n\n' + "\n".join(
 
@@ -70,7 +72,6 @@ def compare_and_notify(current_games, saved_games):
                     f"({datetime.fromtimestamp(game['start_date']).strftime('%d.%m')})", 2) for game in
                  future_games])
         photos = [i['img_url'] for i in cur_games]
-        logger.debug(photos)
         data = {'message': message, 'photos': photos}
         message_queue.put(data)
         save_to_file(games)
@@ -85,6 +86,7 @@ def check_and_notify():
 def check_epic():
     while True:
         current_time = datetime.now().time()
+        logger.debug(f"CHECK EPIC | {current_time}")
         if datetime.strptime("17:30", "%H:%M").time() <= current_time <= datetime.strptime("18:30", "%H:%M").time():
             check_and_notify()
             time.sleep(300)

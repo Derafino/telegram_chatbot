@@ -113,7 +113,6 @@ class TelegramBot:
 
                 while not message_queue.empty():
                     data = message_queue.get()
-                    logger.debug(data)
                     if len(data['photos']) == 1:
                         await self.bot_send_photo(photo_url=data['photos'][0], text=data['message'])
                     else:
@@ -633,8 +632,6 @@ class TelegramBot:
         :param media_urls:
         :param text:
         """
-        logger.debug(text)
-        logger.debug(media_urls[0])
         media = [InputMediaPhoto(media_urls[0], caption=text, parse_mode=ParseMode.MARKDOWN_V2)]
         for url in media_urls[1:]:
             media.append(InputMediaPhoto(url))
