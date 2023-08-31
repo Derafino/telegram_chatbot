@@ -8,7 +8,9 @@ message_queue = queue.Queue()
 
 
 def settings():
-    with open("./config.json", "r", encoding="utf-8") as f:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(current_dir, "config.json")
+    with open(file_path, "r", encoding="utf-8") as f:
         return dict(json.loads(f.read()))
 
 

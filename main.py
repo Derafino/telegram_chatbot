@@ -15,9 +15,9 @@ from games.black_jack import sum_hand, deal_hand, deal_card, deck
 from games.magic_8_ball import magic_8_ball_phrase
 from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min, calc_xp, validate_bet, rate_limited
 from modules.anime import choose_random_anime_image
-from modules.epic_games import check_epic
+from modules.epic_games import EGSFreeGames
 from modules.shop import SHOP_ITEMS, ShopItemBoosterMSG, ShopItemBoosterPerMin
-from modules.steam_events import check_steam_events
+from modules.steam_events import SteamEvents
 
 BLACKJACK = 0
 TEXT, IMAGE, IMAGE_WAITING, REGULARITY, DELAY, TIME = range(6)
@@ -677,10 +677,12 @@ if __name__ == '__main__':
     bonus_per_min_thread = threading.Thread(target=add_coins_per_min, daemon=True)
     bonus_per_min_thread.start()
 
-    check_epic_thread = threading.Thread(target=check_epic, daemon=True)
+    egs_free_games = EGSFreeGames()
+    check_epic_thread = threading.Thread(target=egs_free_games.check_epic_free_games_loop, daemon=True)
     check_epic_thread.start()
 
-    check_steam_events_thread = threading.Thread(target=check_steam_events, daemon=True)
+    steam_events = SteamEvents()
+    check_steam_events_thread = threading.Thread(target=steam_events.check_steam_events_loop, daemon=True)
     check_steam_events_thread.start()
 
     TelegramBot(TELEGRAM_TOKEN, TELEGRAM_CHAT)
