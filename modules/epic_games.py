@@ -31,19 +31,16 @@ def read_from_file():
 def compare_and_notify(current_games, saved_games):
     games = list()
     for i in current_games['data']['Catalog']['searchStore']['elements']:
-
         if i['promotions']:
             url = "https://store.epicgames.com/en-US/p/" + i['catalogNs']['mappings'][0]['pageSlug']
             img_url = [img for img in i['keyImages'] if img['type'] == 'OfferImageTall'][0]['url']
             if i['promotions']['promotionalOffers']:
 
                 start_date = i['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['startDate']
-                effective_date = i['effectiveDate']
-                effective_date = datetime.strptime(effective_date, "%Y-%m-%dT%H:%M:%S.%fZ")
                 start_date = datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%S.%fZ")
                 end_date = i['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['endDate']
                 end_date = datetime.strptime(end_date, "%Y-%m-%dT%H:%M:%S.%fZ")
-                if end_date > datetime.now() > start_date == effective_date:
+                if end_date > datetime.now() > start_date and i['price']['totalPrice']['discountPrice'] ==0:
                     game = {'title': i['title'], 'url': url, 'start_date': int(start_date.timestamp()),
                             'end_date': int(end_date.timestamp()),
                             'img_url': img_url}
@@ -55,7 +52,6 @@ def compare_and_notify(current_games, saved_games):
                 if datetime.now() < start_date:
                     game = {'title': i['title'], 'url': url, 'start_date': int(start_date.timestamp())}
                     games.append(game)
-
     if games != saved_games:
         cur_games = [i for i in games if i['start_date'] < datetime.now().timestamp() < i['end_date']]
 
