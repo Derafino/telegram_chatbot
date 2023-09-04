@@ -2,6 +2,7 @@ import datetime
 import time
 
 import pytest
+import requests
 from epicstore_api import EpicGamesStoreAPI
 from telegram.helpers import escape_markdown
 
@@ -136,6 +137,16 @@ def test_get_free_games_success(monkeypatch):
     egs = EGSFreeGames()
     result = egs.get_free_games()
     assert result == test_free_games_data
+
+
+def test_get_free_games_fail(monkeypatch):
+    def mock_raise_connection_error(*args, **kwargs):
+        raise requests.exceptions.ConnectionError("Test connection error")
+
+    monkeypatch.setattr(EpicGamesStoreAPI, "get_free_games", mock_raise_connection_error)
+    egs = EGSFreeGames()
+    result = egs.get_free_games()
+    assert result == {}
 
 
 def test_save_and_read_from_file(tmpdir):

@@ -5,7 +5,6 @@ import json
 import os
 
 from telegram.helpers import escape_markdown
-from config import message_queue
 
 
 class SteamEvents:
@@ -55,15 +54,15 @@ class SteamEvents:
         return [event for event in fetched_events if event not in saved_events]
 
     @staticmethod
-    def print_new_events(new_events):
+    def print_new_events(new_events, tg_bot):
         for event in new_events:
             message = f"🚀 *{escape_markdown('New Steam Event!', 2)}* 🚀\n" \
                       f"🎮 *Title:* {escape_markdown(event['title'], 2)}\n" \
                       f"🔗 *Items:* [Click Here]({event['link']})"
             data = {'message': message, 'photos': [event['enclosure_url']]}
-            message_queue.put(data)
+            tg_bot.loop.create_task(tg_bot.bot_send_photo(photo_url=data['photos'][0], text=data['message']))
 
-    def check_steam_events_loop(self, num_iterations=None):
+    def check_steam_events_loop(self, tg_bot, num_iterations=None):
         iteration = 0
         while True:
             response_content = self.get_last_events()
@@ -72,7 +71,7 @@ class SteamEvents:
 
             if fetched_events != saved_events:
                 new_events = self.get_new_events(fetched_events, saved_events)
-                self.print_new_events(new_events)
+                self.print_new_events(new_events, tg_bot)
                 self.save_to_file(new_events)
 
             time.sleep(3600)

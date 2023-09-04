@@ -1,12 +1,14 @@
 import datetime
 import json
 import os
+import random
 from typing import List
 from config import COINS_PER_MSG, MSG_CD, WHO_CD, BALL8_CD, PICK_CD, RATING_CD, ANIME_CD, BJ_CD, logger
 from sqlalchemy.orm import joinedload
 
 from db.database import Session
-from db.models import User, Booster, ActionCooldown, UserAction, UserLevel, UserBooster
+from db.models import User, Booster, ActionCooldown, UserAction, UserLevel, UserBooster, Giveaway, GiveawayParticipant, \
+    GiveawayGift
 
 
 class UserCRUD:
@@ -14,8 +16,25 @@ class UserCRUD:
     def create_user(user_id: int, user_name: str = '', user_nickname: str = '') -> None:
         with Session() as session:
             with session.begin():
-                user = User(user_id=user_id, user_name=user_name, user_nickname=user_nickname)
-                session.add(user)
+                existing_user = session.query(User).filter_by(user_id=user_id).first()
+
+                if not existing_user:
+                    user = User(user_id=user_id, user_name=user_name, user_nickname=user_nickname)
+                    session.add(user)
+                    logger.debug(f"User with ID {user_id} created.")
+                else:
+                    logger.debug(f"User with ID {user_id} already exists in the database. Skipping creation.")
+
+    @staticmethod
+    def delete_user(user_id):
+        with Session() as session:
+            user = session.query(User).filter_by(user_id=user_id).first()
+            if user:
+                session.delete(user)
+                session.commit()
+                logger.debug(f"User with ID {user_id} and associated data has been deleted.")
+            else:
+                logger.debug(f"User with ID {user_id} not found.")
 
     @staticmethod
     def get_user_by_id(user_id):
@@ -216,6 +235,110 @@ class UsersBoostersCRUD:
                 session.add(new_booster)
 
             session.commit()
+
+
+class GiveawayCRUD:
+    @staticmethod
+    def create_giveaway(giveaway_type: str, description: str, end_datetime: str,
+                        gifts: list,
+                        message_id: int = None) -> int:
+        with Session() as session:
+            new_giveaway = Giveaway(type=giveaway_type, message_id=message_id, description=description,
+                                    end_datetime=end_datetime,
+                                    winners=len(gifts))
+            session.add(new_giveaway)
+            session.commit()
+            for gift_data in gifts:
+                gift_name, amount = gift_data.get('name'), gift_data.get('amount')
+                if gift_name and amount:
+                    giveaway_gift = GiveawayGift(giveaway_id=new_giveaway.id, gift_name=gift_name, amount=amount)
+                    session.add(giveaway_gift)
+                    session.commit()
+            return new_giveaway.id
+
+    @staticmethod
+    def delete_giveaway(giveaway_id: int):
+        with Session() as session:
+            session.query(GiveawayParticipant).filter_by(giveaway_id=giveaway_id).delete()
+            session.query(GiveawayGift).filter_by(giveaway_id=giveaway_id).delete()
+            session.query(Giveaway).filter_by(id=giveaway_id).delete()
+            session.commit()
+
+    @staticmethod
+    def add_participant(user_id: int, giveaway_id: int):
+        with Session() as session:
+            participant = GiveawayParticipant(user_id=user_id, giveaway_id=giveaway_id)
+            session.add(participant)
+            session.commit()
+
+    @staticmethod
+    def has_user_participated(user_id: int, giveaway_id: int) -> bool:
+        with Session() as session:
+            existing_participant = session.query(GiveawayParticipant).filter_by(user_id=user_id,
+                                                                                giveaway_id=giveaway_id).first()
+            return existing_participant is not None
+
+    @staticmethod
+    def get_participant_count(giveaway_id: int):
+        with Session() as session:
+            count = session.query(GiveawayParticipant).filter_by(giveaway_id=giveaway_id).count()
+            return count
+
+    @staticmethod
+    def set_message_id(giveaway_id: int, message_id: int):
+        with Session() as session:
+            giveaway = session.query(Giveaway).filter_by(id=giveaway_id).first()
+            if giveaway:
+                giveaway.message_id = message_id
+                session.commit()
+
+    @staticmethod
+    def get_giveaway_end_datetime(giveaway_id: int) -> int:
+        with Session() as session:
+            giveaway = session.query(Giveaway).filter_by(id=giveaway_id).first()
+            if giveaway:
+                return giveaway.end_datetime.timestamp()
+
+    @staticmethod
+    def select_giveaway_winners(giveaway_id: int) -> list:
+        with Session() as session:
+            giveaway = session.query(Giveaway).filter_by(id=giveaway_id).first()
+            if not giveaway:
+                return []
+
+            participants = session.query(GiveawayParticipant).filter_by(giveaway_id=giveaway_id).all()
+
+            gifts = session.query(GiveawayGift).filter_by(giveaway_id=giveaway_id).all()
+
+            random.shuffle(participants)
+            random.shuffle(gifts)
+
+            winners = []
+            used_gifts = set()
+
+            for participant in participants:
+                if not gifts:
+                    break
+                gift = random.choice(gifts)
+                if gift.id not in used_gifts:
+                    winners.append(
+                        {"winner": participant.user_id, "gift": {"name": gift.gift_name, "amount": gift.amount}})
+                    used_gifts.add(gift.id)
+
+            GiveawayCRUD.delete_giveaway(giveaway_id)
+            return winners
+
+    @staticmethod
+    def get_all_giveaways():
+        with Session() as session:
+            giveaways = session.query(Giveaway).all()
+            return giveaways
+
+    @staticmethod
+    def get_giveaway_message_id(giveaway_id: int) -> int:
+        with Session() as session:
+            giveaway = session.query(Giveaway).filter_by(id=giveaway_id).first()
+            return giveaway.message_id
 
 
 def setup_database():

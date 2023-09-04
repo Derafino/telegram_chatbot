@@ -4,11 +4,10 @@ import sys
 import queue
 from loguru import logger
 
-message_queue = queue.Queue()
+current_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 def settings():
-    current_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(current_dir, "config.json")
     with open(file_path, "r", encoding="utf-8") as f:
         return dict(json.loads(f.read()))
@@ -33,12 +32,15 @@ if COOLDOWN:
 
 xp_range = list(range(15, 26))
 
-min_bet = 1000
+min_bet = cfg.get("min_bet", 1000)
+min_giveaway_coins = cfg.get("min_giveaway_coins", 10000)
+max_giveaway_coins = cfg.get("max_giveaway_coins", 100000)
+
+anime_path = os.path.join(current_dir, "img/anime")
 
 # ---------------------- LOGGER ----------------------
 
-anime_path = "./anime"
-log_dir = "./log"
+log_dir = os.path.join(current_dir, "/log")
 
 logger_config = {
     "handlers": [

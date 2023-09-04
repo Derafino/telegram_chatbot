@@ -1,12 +1,13 @@
 import datetime
 import random
+import re
 import time
 
 from functools import wraps
 from typing import Callable, Coroutine, Any, Union
 from telegram import Update
 
-from config import xp_range, logger, ADMINS
+from config import xp_range, logger, ADMINS, min_giveaway_coins, max_giveaway_coins
 from db.crud import UserCRUD, UserActionCRUD, ActionCooldownCRUD, UserLevelCRUD
 
 
@@ -81,15 +82,18 @@ def chat_only(handler: Callable[[Update, Any], Coroutine[Any, Any, None]]) -> \
     return wrapper
 
 
-def private_only(command_handler: Callable[[Update, Any], Coroutine[Any, Any, None]]):
-    @wraps(command_handler)
+def private_only(handler: Callable[[Update, Any], Coroutine[Any, Any, None]]) -> \
+        Callable[..., Coroutine[Any, Any, None]]:
+    @wraps(handler)
     async def wrapper(self, *args, **kwargs):
         update = kwargs.get('update') or args[0]
         if update.effective_chat.type != 'private':
             await self.private_only_notification(*args, **kwargs)
+            logger.debug('test1')
             return wrapper
-        return await command_handler(self, *args, **kwargs)
+        return await handler(self, *args, **kwargs)
 
+    logger.debug('test3')
     return wrapper
 
 
@@ -126,6 +130,43 @@ def validate_bet(bet: str, min_bet: int) -> bool:
         return True
     else:
         return False
+
+
+def validate_coins_amount(amount: str, min_amount: int = min_giveaway_coins,
+                          max_amount: int = max_giveaway_coins) -> bool:
+    if amount.isdigit() and min_amount <= int(amount) * 100 <= max_amount:
+        return True
+    else:
+        return False
+
+
+def extract_datetime(text: str) -> datetime:
+    hours_pattern = r'(\d+)\s*h'
+    minutes_pattern = r'(\d+)\s*m'
+    days_pattern = r'(\d+)\s*d'
+    exact_time_pattern = r'(\d{1,2}:\d{2}\s+\d{1,2}.\d{2}.\d{4})'
+
+    hours_match = re.search(hours_pattern, text)
+    minutes_match = re.search(minutes_pattern, text)
+    days_match = re.search(days_pattern, text)
+    exact_time_match = re.search(exact_time_pattern, text)
+
+    result_datetime = datetime.datetime.now()
+
+    if hours_match:
+        hours = int(hours_match.group(1))
+        result_datetime += datetime.timedelta(hours=hours)
+    if minutes_match:
+        minutes = int(minutes_match.group(1))
+        result_datetime += datetime.timedelta(minutes=minutes)
+    if days_match:
+        days = int(days_match.group(1))
+        result_datetime += datetime.timedelta(days=days)
+    if exact_time_match:
+        exact_time = datetime.datetime.strptime(exact_time_match.group(1), '%H:%M %d.%m.%Y')
+        result_datetime = exact_time
+
+    return result_datetime
 
 
 def rate_limited(func: Callable[[Update, Any], Coroutine[Any, Any, None]]) -> Callable[..., Coroutine[Any, Any, None]]:

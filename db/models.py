@@ -15,8 +15,9 @@ class User(Base):
     user_nickname = Column(String, unique=True, nullable=False)
     user_coins = Column(Integer, default=0)
 
-    boosters = relationship("UserBooster", back_populates="user")
-    user_level = relationship("UserLevel", back_populates="user")
+    boosters = relationship("UserBooster", back_populates="user",cascade="all, delete-orphan")
+    user_level = relationship("UserLevel", back_populates="user", cascade="all, delete-orphan")
+    giveaway_participants = relationship("GiveawayParticipant", backref="user", cascade="all, delete-orphan")
 
     @property
     def user_coins_per_msg(self):
@@ -102,6 +103,34 @@ class Notification(Base):
     image_url = Column(String)
     regularity = Column(String)
     time = Column(DateTime)
+
+
+class Giveaway(Base):
+    __tablename__ = 'giveaways'
+    id = Column(Integer, primary_key=True)
+    type = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    end_datetime = Column(DateTime)
+    winners = Column(Integer)
+    message_id = Column(Integer, nullable=True)
+    gifts = relationship("GiveawayGift", back_populates="giveaway")
+
+
+class GiveawayParticipant(Base):
+    __tablename__ = 'giveaway_participants'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'))
+
+    giveaway_id = Column(Integer, ForeignKey('giveaways.id'))
+
+
+class GiveawayGift(Base):
+    __tablename__ = 'giveaway_gifts'
+    id = Column(Integer, primary_key=True)
+    giveaway_id = Column(Integer, ForeignKey('giveaways.id'))
+    gift_name = Column(String)
+    amount = Column(Integer)
+    giveaway = relationship("Giveaway", back_populates="gifts")
 
 
 Base.metadata.create_all(engine)
