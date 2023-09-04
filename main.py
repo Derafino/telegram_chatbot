@@ -826,7 +826,7 @@ class TelegramBot:
             text += f"{idx}. {gift_name} ({gift_amount}x)\n"
 
         text += (
-            f"<b>End Date and Time:</b>\n{end_datetime_str}\n\n"
+            f"\n\n<b>End Date and Time:</b>\n{end_datetime_str}\n\n"
             "\nParticipate now for a chance to win these fantastic prizes! 🎉\n"
             "Good luck to everyone! 🍀\n\n"
         )
@@ -946,7 +946,7 @@ class TelegramBot:
         context.job_queue.run_once(self.delete_messages, 10, data=[update.message, reply])
 
     @rate_limited
-    async def delete_messages(context: CallbackContext) -> None:
+    async def delete_messages(self, context: CallbackContext) -> None:
         """
         delete msg from context
         :param context:
