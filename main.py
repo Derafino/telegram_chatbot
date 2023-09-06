@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import random
+import re
 import threading
 import time
 from typing import Tuple, Optional
@@ -22,11 +23,13 @@ from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min, c
 from modules.anime import choose_random_anime_image
 from modules.epic_games import EGSFreeGames
 from modules.shop import SHOP_ITEMS, ShopItemBoosterMSG, ShopItemBoosterPerMin
+from modules.slap import choose_random_slap_gif
 from modules.steam_events import SteamEvents
 
 BLACKJACK = 0
 SET_TYPE, SET_COINS_AMOUNT, SET_ITEM, SET_AMOUNT, SET_END_DATETIME_OR_ADD_ITEM, SET_WINNERS_AMOUNT, SET_END_DATETIME, \
     SET_DESCRIPTION, SET_PHOTO, REVIEW = range(10)
+IN_CONVERSATION = 0
 
 
 class RateLimiter:
@@ -76,6 +79,7 @@ class TelegramBot:
             CommandHandler('level', self.level_handler),
             CommandHandler('rating', self.rating_handler),
             CommandHandler('anime', self.anime_handler),
+            CommandHandler('slap', self.slap_handler),
             CommandHandler('cd', self.cd_handler),
             CommandHandler('shop', self.shop_handler),
             CallbackQueryHandler(self.buy_callback, pattern='^buy_'),
@@ -108,11 +112,21 @@ class TelegramBot:
                 },
                 fallbacks=[CommandHandler('cancel_giveaway', self.cancel_giveaway_handler),
                            CallbackQueryHandler(self.cancel_giveaway_handler, pattern='CANCEL')],
-                per_message=False
             ),
             CallbackQueryHandler(self.participate_callback, pattern="GIVEAWAY_PARTICIPATE_"),
-            MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & ~filters.UpdateType.EDITED_MESSAGE,
-                           self.text_handler),
+            ConversationHandler(
+                entry_points=[CommandHandler('support_ticket', self.support_ticket)],
+                states={
+                    IN_CONVERSATION: [MessageHandler(filters.ALL & ~filters.COMMAND, self.handle_support_ticket_text)],
+                },
+                fallbacks=[CommandHandler('support_ticket', self.support_ticket)],
+            ),
+            MessageHandler(filters.ChatType.PRIVATE & filters.User(ADMINS[0]), self.handle_admin_reply),
+
+            MessageHandler(
+                filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & ~filters.UpdateType.EDITED_MESSAGE &
+                ~filters.ChatType.PRIVATE,
+                self.text_handler),
 
         ]
         for handler in handlers:
@@ -372,6 +386,48 @@ class TelegramBot:
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
     @rate_limited
+    @admin_only
+    @auth_user
+    async def slap_handler(self, update: Update, context: CallbackContext) -> None:
+        """
+        handler for /slap
+
+        :param update:
+        :param context:
+        """
+        await update.message.delete()
+        user_name_mention = None
+        mentioned_user = update.message.parse_entities(types=["mention"])
+        if mentioned_user:
+            user_name = next(iter(mentioned_user.values()), None)
+            user_id = UserCRUD.get_user_id_by_username(user_name[1:])
+            if user_id:
+                user_nickname = UserCRUD.get_user_by_id(user_id).user_nickname
+                user_name_mention = User(user_id, user_nickname, False).mention_html()
+        if user_name_mention:
+            await self.app.bot.send_animation(chat_id=self.chat_id,animation=choose_random_slap_gif(), caption=user_name_mention,
+                                                 parse_mode=ParseMode.HTML)
+
+        elif update.message.reply_to_message:
+            reply_to_msg_id = update.message.reply_to_message.message_id
+            await update.message.reply_animation(animation=choose_random_slap_gif(),
+                                                 reply_to_message_id=reply_to_msg_id,
+                                                 parse_mode=ParseMode.HTML)
+        else:
+            await update.message.reply_animation(animation=choose_random_slap_gif())
+
+        # user_id = update.message.from_user.id
+        # action_id = 6
+        # cooldown = cooldown_expired(user_id, action_id)
+        # if cooldown is True:
+        #     if UserCRUD.pay_coins(user_id, ANIME_PRICE):
+        #         UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
+
+        # else:
+        #     print(f"You should wait {cooldown} seconds.")
+        #     context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
+
+    @rate_limited
     @auth_user
     async def cd_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -388,6 +444,104 @@ class TelegramBot:
                       f"Anime: *{ANIME_CD}s*\n"
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
+
+    @rate_limited
+    async def support_ticket(self, update: Update, context: CallbackContext) -> int:
+        user_data = context.user_data
+
+        if user_data.get("in_conversation"):
+            del user_data["in_conversation"]
+            del user_data["author_name"]
+            await update.message.reply_text(
+                "The conversation has been stopped. You can start a new conversation anytime.")
+            return ConversationHandler.END
+
+        user_data["in_conversation"] = True
+        user_data["author_name"] = update.message.from_user.username
+        await update.message.reply_text(
+            "Hello! You can start a conversation here. Send /support_ticket to stop the conversation."
+        )
+        return IN_CONVERSATION
+
+    @rate_limited
+    async def handle_support_ticket_text(self, update: Update, context: CallbackContext) -> int:
+        user_data = context.user_data
+
+        if not user_data.get("in_conversation"):
+            return ConversationHandler.END
+
+        author_name = user_data.get("author_name")
+        admin_user_id = ADMINS[0]
+        user_id = update.message.from_user.id
+        text = update.message.text
+
+        if text:
+            user_data["last_message"] = {"author_name": author_name, "text": text}
+            await context.bot.send_message(
+                chat_id=admin_user_id,
+                text=f"From: {author_name}\nUser ID: {user_id}\nMessage: {text}",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+
+        for entity in update.message.entities:
+            if entity.type == 'photo':
+                photo_id = update.message.photo[-1].file_id
+                caption = update.message.caption if update.message.caption else ""
+                await context.bot.send_photo(
+                    chat_id=admin_user_id,
+                    photo=photo_id,
+                    caption=f"From: {author_name}\nUser ID: {user_id}\nCaption: {caption}",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+            elif entity.type == 'video':
+                video_id = update.message.video.file_id
+                caption = update.message.caption if update.message.caption else ""
+                await context.bot.send_video(
+                    chat_id=admin_user_id,
+                    video=video_id,
+                    caption=f"From: {author_name}\nUser ID: {user_id}\nCaption: {caption}",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+
+        if update.message.sticker:
+            sticker_id = update.message.sticker.file_id
+            await context.bot.send_sticker(
+                chat_id=admin_user_id,
+                sticker=sticker_id,
+            )
+            await context.bot.send_message(
+                chat_id=admin_user_id,
+                text=f"From: {author_name}\nUser ID: {user_id}",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+
+        if update.message.animation and update.message.animation.mime_type == 'video/mp4':
+            gif_id = update.message.animation.file_id
+            await context.bot.send_animation(
+                chat_id=admin_user_id,
+                animation=gif_id,
+            )
+            await context.bot.send_message(
+                chat_id=admin_user_id,
+                text=f"From: {author_name}\nUser ID: {user_id}",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+
+        await update.message.reply_text("Your message has been sent to the admin.")
+        return IN_CONVERSATION
+
+    @admin_only
+    async def handle_admin_reply(self, update: Update, context: CallbackContext):
+        admin_user_id = ADMINS[0]
+        if update.message.from_user.id == admin_user_id and update.message.reply_to_message:
+            user_id_pattern = r"User ID: (-?\d+)"
+            user_id = int(re.search(user_id_pattern, update.message.reply_to_message.text).group(1))
+            if user_id:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=f"From Admin:\n{update.message.text}",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~ BLACK JACK ~~~~~~~~~~~~~~~~~~~~~~~~~~
     @rate_limited
@@ -959,7 +1113,7 @@ class TelegramBot:
             except Exception as e:
                 logger.error(e)
 
-    @rate_limited
+    @staticmethod
     def extract_status_change(chat_member_update: ChatMemberUpdated) -> Optional[Tuple[bool, bool]]:
         """Takes a ChatMemberUpdated instance and extracts whether the 'old_chat_member' was a member
         of the chat and whether the 'new_chat_member' is a member of the chat. Returns None, if
@@ -985,7 +1139,6 @@ class TelegramBot:
 
         return was_member, is_member
 
-    @rate_limited
     async def greet_chat_members(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Greets new users in chats and announces when someone leaves"""
         if update.effective_chat.id == self.chat_id:

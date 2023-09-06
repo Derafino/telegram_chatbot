@@ -25,7 +25,7 @@ def cooldown_expired(user_id: int, action_id: int) -> Union[bool, int]:
         return True
 
 
-def calculate_remaining_time(last_action_time, cooldown):
+def calculate_remaining_time(last_action_time, cooldown) -> int:
     now = datetime.datetime.now()
     return last_action_time.timestamp() + cooldown - now.timestamp()
 

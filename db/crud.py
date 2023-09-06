@@ -43,6 +43,12 @@ class UserCRUD:
             return user
 
     @staticmethod
+    def get_user_id_by_username(user_name):
+        with Session() as session:
+            user = session.query(User).filter_by(user_name=user_name).first()
+            return user.user_id if user else None
+
+    @staticmethod
     def check_user_exists(user_id: int) -> bool:
         user = UserCRUD.get_user_by_id(user_id)
         return user is not None

@@ -36,7 +36,8 @@ min_bet = cfg.get("min_bet", 1000)
 min_giveaway_coins = cfg.get("min_giveaway_coins", 10000)
 max_giveaway_coins = cfg.get("max_giveaway_coins", 100000)
 
-anime_path = os.path.join(current_dir, "img/anime")
+anime_path = os.path.join(current_dir, "static/anime_img")
+slap_path = os.path.join(current_dir, "static/slap_gif")
 
 # ---------------------- LOGGER ----------------------
 

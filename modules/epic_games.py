@@ -96,6 +96,10 @@ class EGSFreeGames:
             tg_bot.loop.create_task(tg_bot.bot_send_media_group(media_urls=data['photos'], text=data['message']))
 
     def check_epic_free_games_loop(self, tg_bot, num_iterations=None, ):
+        """
+        :param tg_bot:
+        :param num_iterations: if None - infinite loop
+        """
         iteration = 0
         while True:
             current_time = datetime.datetime.now().time()
