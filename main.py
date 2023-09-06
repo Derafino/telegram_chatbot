@@ -405,8 +405,9 @@ class TelegramBot:
                 user_nickname = UserCRUD.get_user_by_id(user_id).user_nickname
                 user_name_mention = User(user_id, user_nickname, False).mention_html()
         if user_name_mention:
-            await self.app.bot.send_animation(chat_id=self.chat_id,animation=choose_random_slap_gif(), caption=user_name_mention,
-                                                 parse_mode=ParseMode.HTML)
+            await self.app.bot.send_animation(chat_id=self.chat_id, animation=choose_random_slap_gif(),
+                                              caption=user_name_mention,
+                                              parse_mode=ParseMode.HTML)
 
         elif update.message.reply_to_message:
             reply_to_msg_id = update.message.reply_to_message.message_id
@@ -414,18 +415,7 @@ class TelegramBot:
                                                  reply_to_message_id=reply_to_msg_id,
                                                  parse_mode=ParseMode.HTML)
         else:
-            await update.message.reply_animation(animation=choose_random_slap_gif())
-
-        # user_id = update.message.from_user.id
-        # action_id = 6
-        # cooldown = cooldown_expired(user_id, action_id)
-        # if cooldown is True:
-        #     if UserCRUD.pay_coins(user_id, ANIME_PRICE):
-        #         UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
-
-        # else:
-        #     print(f"You should wait {cooldown} seconds.")
-        #     context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
+            await self.app.bot.send_animation(chat_id=self.chat_id, animation=choose_random_slap_gif())
 
     @rate_limited
     @auth_user
