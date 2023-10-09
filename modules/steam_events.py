@@ -37,7 +37,7 @@ class SteamEvents:
                 "enclosure_url": enclosure_url
             })
 
-        return events[:5]
+        return events[:1]
 
     def save_to_file(self, events: list[dict]):
         with open(self.filename, 'w') as f:
@@ -68,9 +68,9 @@ class SteamEvents:
             response_content = self.get_last_events()
             fetched_events = self.format_response(response_content)
             saved_events = self.read_from_file()
-
             if fetched_events != saved_events:
                 new_events = self.get_new_events(fetched_events, saved_events)
+                print(new_events)
                 self.print_new_events(new_events, tg_bot)
                 self.save_to_file(new_events)
 

@@ -1,9 +1,9 @@
 import asyncio
 import datetime
 import random
-import re
 import threading
 import time
+
 from typing import Tuple, Optional
 
 from telegram import Update, User, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, ChatMember, \
@@ -14,12 +14,12 @@ from telegram.ext import Application, CommandHandler, CallbackContext, MessageHa
 from telegram.helpers import escape_markdown
 
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT, logger, ANIME_PRICE, MSG_CD, WHO_CD, BALL8_CD, PICK_CD, RATING_CD, \
-    ANIME_CD, min_bet, ADMINS, min_giveaway_coins, max_giveaway_coins
+    ANIME_CD, min_bet, ADMINS, max_giveaway_coins, min_giveaway_coins
 from db.crud import setup_database, UserCRUD, UserActionCRUD, UserLevelCRUD, UsersBoostersCRUD, GiveawayCRUD
 from games.black_jack import sum_hand, deal_hand, deal_card, deck
 from games.magic_8_ball import magic_8_ball_phrase
 from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min, calc_xp, validate_bet, rate_limited, \
-    validate_coins_amount, extract_datetime, admin_only
+    admin_only, extract_datetime, validate_coins_amount
 from modules.anime import choose_random_anime_image
 from modules.epic_games import EGSFreeGames
 from modules.shop import SHOP_ITEMS, ShopItemBoosterMSG, ShopItemBoosterPerMin
@@ -30,6 +30,8 @@ BLACKJACK = 0
 SET_TYPE, SET_COINS_AMOUNT, SET_ITEM, SET_AMOUNT, SET_END_DATETIME_OR_ADD_ITEM, SET_WINNERS_AMOUNT, SET_END_DATETIME, \
     SET_DESCRIPTION, SET_PHOTO, REVIEW = range(10)
 IN_CONVERSATION = 0
+SET_AUC_DESCRIPTION = 0
+CONFIRM_AUC_BET = 0
 
 
 class RateLimiter:
@@ -114,14 +116,6 @@ class TelegramBot:
                            CallbackQueryHandler(self.cancel_giveaway_handler, pattern='CANCEL')],
             ),
             CallbackQueryHandler(self.participate_callback, pattern="GIVEAWAY_PARTICIPATE_"),
-            ConversationHandler(
-                entry_points=[CommandHandler('support_ticket', self.support_ticket)],
-                states={
-                    IN_CONVERSATION: [MessageHandler(filters.ALL & ~filters.COMMAND, self.handle_support_ticket_text)],
-                },
-                fallbacks=[CommandHandler('support_ticket', self.support_ticket)],
-            ),
-            MessageHandler(filters.ChatType.PRIVATE & filters.User(ADMINS[0]), self.handle_admin_reply),
 
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & ~filters.UpdateType.EDITED_MESSAGE &
@@ -386,7 +380,6 @@ class TelegramBot:
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
     @rate_limited
-    @admin_only
     @auth_user
     async def slap_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -434,104 +427,6 @@ class TelegramBot:
                       f"Anime: *{ANIME_CD}s*\n"
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
-
-    @rate_limited
-    async def support_ticket(self, update: Update, context: CallbackContext) -> int:
-        user_data = context.user_data
-
-        if user_data.get("in_conversation"):
-            del user_data["in_conversation"]
-            del user_data["author_name"]
-            await update.message.reply_text(
-                "The conversation has been stopped. You can start a new conversation anytime.")
-            return ConversationHandler.END
-
-        user_data["in_conversation"] = True
-        user_data["author_name"] = update.message.from_user.username
-        await update.message.reply_text(
-            "Hello! You can start a conversation here. Send /support_ticket to stop the conversation."
-        )
-        return IN_CONVERSATION
-
-    @rate_limited
-    async def handle_support_ticket_text(self, update: Update, context: CallbackContext) -> int:
-        user_data = context.user_data
-
-        if not user_data.get("in_conversation"):
-            return ConversationHandler.END
-
-        author_name = user_data.get("author_name")
-        admin_user_id = ADMINS[0]
-        user_id = update.message.from_user.id
-        text = update.message.text
-
-        if text:
-            user_data["last_message"] = {"author_name": author_name, "text": text}
-            await context.bot.send_message(
-                chat_id=admin_user_id,
-                text=f"From: {author_name}\nUser ID: {user_id}\nMessage: {text}",
-                parse_mode=ParseMode.MARKDOWN,
-            )
-
-        for entity in update.message.entities:
-            if entity.type == 'photo':
-                photo_id = update.message.photo[-1].file_id
-                caption = update.message.caption if update.message.caption else ""
-                await context.bot.send_photo(
-                    chat_id=admin_user_id,
-                    photo=photo_id,
-                    caption=f"From: {author_name}\nUser ID: {user_id}\nCaption: {caption}",
-                    parse_mode=ParseMode.MARKDOWN,
-                )
-            elif entity.type == 'video':
-                video_id = update.message.video.file_id
-                caption = update.message.caption if update.message.caption else ""
-                await context.bot.send_video(
-                    chat_id=admin_user_id,
-                    video=video_id,
-                    caption=f"From: {author_name}\nUser ID: {user_id}\nCaption: {caption}",
-                    parse_mode=ParseMode.MARKDOWN,
-                )
-
-        if update.message.sticker:
-            sticker_id = update.message.sticker.file_id
-            await context.bot.send_sticker(
-                chat_id=admin_user_id,
-                sticker=sticker_id,
-            )
-            await context.bot.send_message(
-                chat_id=admin_user_id,
-                text=f"From: {author_name}\nUser ID: {user_id}",
-                parse_mode=ParseMode.MARKDOWN,
-            )
-
-        if update.message.animation and update.message.animation.mime_type == 'video/mp4':
-            gif_id = update.message.animation.file_id
-            await context.bot.send_animation(
-                chat_id=admin_user_id,
-                animation=gif_id,
-            )
-            await context.bot.send_message(
-                chat_id=admin_user_id,
-                text=f"From: {author_name}\nUser ID: {user_id}",
-                parse_mode=ParseMode.MARKDOWN,
-            )
-
-        await update.message.reply_text("Your message has been sent to the admin.")
-        return IN_CONVERSATION
-
-    @admin_only
-    async def handle_admin_reply(self, update: Update, context: CallbackContext):
-        admin_user_id = ADMINS[0]
-        if update.message.from_user.id == admin_user_id and update.message.reply_to_message:
-            user_id_pattern = r"User ID: (-?\d+)"
-            user_id = int(re.search(user_id_pattern, update.message.reply_to_message.text).group(1))
-            if user_id:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=f"From Admin:\n{update.message.text}",
-                    parse_mode=ParseMode.MARKDOWN,
-                )
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~ BLACK JACK ~~~~~~~~~~~~~~~~~~~~~~~~~~
     @rate_limited
@@ -894,13 +789,17 @@ class TelegramBot:
         await update.message.delete()
 
         bot_message = context.user_data['bot_message']
-        await bot_message.edit_text("Now provide description")
-        return SET_DESCRIPTION
+        await bot_message.edit_text("Now send photo")
+
+        return SET_PHOTO
 
     @rate_limited
     async def set_giveaway_photo(self, update: Update, context: CallbackContext):
-        # TODO
-        pass
+        context.user_data['giveaway_photo'] = update.message.photo[-1].file_id
+        await update.message.delete()
+        bot_message = context.user_data['bot_message']
+        await bot_message.edit_text("Now provide description")
+        return SET_DESCRIPTION
 
     @rate_limited
     async def set_giveaway_description(self, update: Update, context: CallbackContext):
@@ -915,15 +814,6 @@ class TelegramBot:
         giveaway_description = context.user_data['description']
 
         keyboard = [
-            # TODO callback handlers for edit
-            [
-                InlineKeyboardButton("EDIT Type", callback_data="EDIT_TYPE"),
-
-                InlineKeyboardButton("EDIT Amount", callback_data="EDIT_AMOUNT")],
-            [
-                InlineKeyboardButton("EDIT Description", callback_data="EDIT_DESCRIPTION"),
-                InlineKeyboardButton("EDIT End datetime", callback_data="EDIT_END_DATETIME"),
-            ],
             [
                 InlineKeyboardButton("✅", callback_data="CONFIRM"),
                 InlineKeyboardButton("❌", callback_data="CANCEL"),
@@ -974,8 +864,9 @@ class TelegramBot:
             "\nParticipate now for a chance to win these fantastic prizes! 🎉\n"
             "Good luck to everyone! 🍀\n\n"
         )
-        giveaway_message = await self.app.bot.send_message(chat_id=self.chat_id, text=text,
-                                                           reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+        giveaway_message = await self.app.bot.send_photo(chat_id=self.chat_id,
+                                                         photo=context.user_data['giveaway_photo'], caption=text,
+                                                         reply_markup=reply_markup, parse_mode=ParseMode.HTML)
         GiveawayCRUD.set_message_id(giveaway_id=created_giveaway_id, message_id=giveaway_message.message_id)
         wait_for_giveaway_ending_thread = threading.Thread(target=wait_for_giveaway_ending,
                                                            args=(created_giveaway_id, self,),
@@ -1042,6 +933,15 @@ class TelegramBot:
         """
 
         await self.app.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, parse_mode=parse_mode)
+
+    @rate_limited
+    async def bot_edit_message_caption(self, chat_id: int, message_id: int, text: str,
+                                       parse_mode: ParseMode = None) -> None:
+        """
+        send message with provided text
+        """
+        await self.app.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=text,
+                                                parse_mode=parse_mode)
 
     @rate_limited
     async def bot_send_photo(self, photo_url: str, text: str) -> None:
@@ -1241,9 +1141,9 @@ def main():
     bonus_per_min_thread = threading.Thread(target=add_coins_per_min, daemon=True)
     bonus_per_min_thread.start()
 
-    egs_free_games = EGSFreeGames()
-    check_epic_thread = threading.Thread(target=egs_free_games.check_epic_free_games_loop, args=(tg_bot,), daemon=True)
-    check_epic_thread.start()
+    # egs_free_games = EGSFreeGames()
+    # check_epic_thread = threading.Thread(target=egs_free_games.check_epic_free_games_loop, args=(tg_bot,), daemon=True)
+    # check_epic_thread.start()
 
     steam_events = SteamEvents()
     check_steam_events_thread = threading.Thread(target=steam_events.check_steam_events_loop, args=(tg_bot,),
