@@ -391,8 +391,9 @@ class TelegramBot:
         :param context:
         """
         user_id = update.message.from_user.id
-        action_id = 7
-        cooldown = cooldown_expired(user_id, action_id)
+        action_id = 8
+        # cooldown = cooldown_expired(user_id, action_id)
+        cooldown = True
         if cooldown is True:
             if UserCRUD.pay_coins(user_id, IMG_PRICE):
                 UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
@@ -468,7 +469,7 @@ class TelegramBot:
             await update.message.reply_text(f'You must provide a bet of at least {int(min_bet / 100)} coins.')
             return ConversationHandler.END
         user_id = update.message.from_user.id
-        action_id = 8
+        action_id = 7
         cooldown = cooldown_expired(user_id, action_id)
         if cooldown is True:
             if UserCRUD.pay_coins(user_id, bet):

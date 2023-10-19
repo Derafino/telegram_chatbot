@@ -2,3 +2,4 @@ epicstore_api==0.1.6
 loguru==0.7.0
 python-telegram-bot[job-queue]==20.3
 SQLAlchemy==2.0.14
+Pillow==10.1.0
