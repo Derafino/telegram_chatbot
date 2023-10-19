@@ -3,7 +3,7 @@ import json
 import os
 import random
 from typing import List
-from config import COINS_PER_MSG, MSG_CD, WHO_CD, BALL8_CD, PICK_CD, RATING_CD, ANIME_CD, BJ_CD, logger
+from config import COINS_PER_MSG, MSG_CD, WHO_CD, BALL8_CD, PICK_CD, RATING_CD, ANIME_CD, BJ_CD, logger, IMG_CD
 from sqlalchemy.orm import joinedload
 
 from db.database import Session
@@ -210,6 +210,7 @@ class ActionCooldownCRUD:
                     ActionCooldown(id=5, cooldown=RATING_CD),  # rating
                     ActionCooldown(id=6, cooldown=ANIME_CD),  # anime
                     ActionCooldown(id=7, cooldown=BJ_CD),  # bj
+                    ActionCooldown(id=8, cooldown=IMG_CD),  # image
                 ]
                 session.add_all(action_cooldown_records)
 
