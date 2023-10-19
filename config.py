@@ -19,6 +19,7 @@ TELEGRAM_CHAT = cfg.get("telegram_chat", None)
 ADMINS = cfg.get("admins", None)
 COINS_PER_MSG = cfg.get("coins_per_msg", None)
 ANIME_PRICE = cfg.get("anime_price", 10000)
+IMG_PRICE = cfg.get("img_price", 100000)
 
 COOLDOWN = cfg.get("cooldown", None)
 if COOLDOWN:
@@ -27,6 +28,7 @@ if COOLDOWN:
     BALL8_CD = COOLDOWN.get("8ball", 10)
     PICK_CD = COOLDOWN.get("pick", 10)
     RATING_CD = COOLDOWN.get("rating", 30)
+    IMG_CD = COOLDOWN.get("rating", 30)
     ANIME_CD = COOLDOWN.get("anime", 30)
     BJ_CD = COOLDOWN.get("bj", 30)
 
@@ -37,6 +39,7 @@ min_giveaway_coins = cfg.get("min_giveaway_coins", 10000)
 max_giveaway_coins = cfg.get("max_giveaway_coins", 100000)
 
 anime_path = os.path.join(current_dir, "static/anime_img")
+img_path = os.path.join(current_dir, "static/img")
 slap_path = os.path.join(current_dir, "static/slap_gif")
 
 # ---------------------- LOGGER ----------------------

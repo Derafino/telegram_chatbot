@@ -14,7 +14,7 @@ from telegram.ext import Application, CommandHandler, CallbackContext, MessageHa
 from telegram.helpers import escape_markdown
 
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT, logger, ANIME_PRICE, MSG_CD, WHO_CD, BALL8_CD, PICK_CD, RATING_CD, \
-    ANIME_CD, min_bet, ADMINS, max_giveaway_coins, min_giveaway_coins
+    ANIME_CD, min_bet, ADMINS, max_giveaway_coins, min_giveaway_coins, IMG_CD, IMG_PRICE
 from db.crud import setup_database, UserCRUD, UserActionCRUD, UserLevelCRUD, UsersBoostersCRUD, GiveawayCRUD
 from games.black_jack import sum_hand, deal_hand, deal_card, deck
 from games.magic_8_ball import magic_8_ball_phrase
@@ -22,6 +22,7 @@ from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min, c
     admin_only, extract_datetime, validate_coins_amount
 from modules.anime import choose_random_anime_image
 from modules.epic_games import EGSFreeGames
+from modules.img import choose_random_image
 from modules.shop import SHOP_ITEMS, ShopItemBoosterMSG, ShopItemBoosterPerMin
 from modules.slap import choose_random_slap_gif
 from modules.steam_events import SteamEvents
@@ -81,6 +82,7 @@ class TelegramBot:
             CommandHandler('level', self.level_handler),
             CommandHandler('rating', self.rating_handler),
             CommandHandler('anime', self.anime_handler),
+            CommandHandler('img', self.image_handler),
             CommandHandler('slap', self.slap_handler),
             CommandHandler('cd', self.cd_handler),
             CommandHandler('shop', self.shop_handler),
@@ -381,6 +383,26 @@ class TelegramBot:
 
     @rate_limited
     @auth_user
+    async def image_handler(self, update: Update, context: CallbackContext) -> None:
+        """
+        handler for /img
+
+        :param update:
+        :param context:
+        """
+        user_id = update.message.from_user.id
+        action_id = 7
+        cooldown = cooldown_expired(user_id, action_id)
+        if cooldown is True:
+            if UserCRUD.pay_coins(user_id, IMG_PRICE):
+                UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
+
+                await update.message.reply_photo(photo=choose_random_image(), has_spoiler=True)
+        else:
+            print(f"You should wait {cooldown} seconds.")
+            context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
+    @rate_limited
+    @auth_user
     async def slap_handler(self, update: Update, context: CallbackContext) -> None:
         """
         handler for /slap
@@ -424,6 +446,7 @@ class TelegramBot:
                       f"8ball: *{BALL8_CD}s*\n" \
                       f"Pick: *{PICK_CD}s*\n" \
                       f"Rating: *{RATING_CD}s*\n" \
+                      f"Image: *{IMG_CD}s*\n" \
                       f"Anime: *{ANIME_CD}s*\n"
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
