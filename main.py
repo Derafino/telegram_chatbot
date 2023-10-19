@@ -392,8 +392,7 @@ class TelegramBot:
         """
         user_id = update.message.from_user.id
         action_id = 8
-        # cooldown = cooldown_expired(user_id, action_id)
-        cooldown = True
+        cooldown = cooldown_expired(user_id, action_id)
         if cooldown is True:
             if UserCRUD.pay_coins(user_id, IMG_PRICE):
                 UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
