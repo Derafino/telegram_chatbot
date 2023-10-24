@@ -1,7 +1,6 @@
 import time
 
 from telegram.helpers import escape_markdown
-from config import message_queue
 from modules.steam_events import SteamEvents
 import requests
 

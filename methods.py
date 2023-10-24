@@ -168,11 +168,3 @@ def extract_datetime(text: str) -> datetime:
 
     return result_datetime
 
-
-def rate_limited(func: Callable[[Update, Any], Coroutine[Any, Any, None]]) -> Callable[..., Coroutine[Any, Any, None]]:
-    @wraps(func)
-    async def wrapper(self, *args, **kwargs):
-        await self.rate_limiter.acquire()
-        return await func(self, *args, **kwargs)
-
-    return wrapper

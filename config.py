@@ -28,7 +28,7 @@ if COOLDOWN:
     BALL8_CD = COOLDOWN.get("8ball", 10)
     PICK_CD = COOLDOWN.get("pick", 10)
     RATING_CD = COOLDOWN.get("rating", 30)
-    IMG_CD = COOLDOWN.get("rating", 30)
+    IMG_CD = COOLDOWN.get("img", 30)
     ANIME_CD = COOLDOWN.get("anime", 30)
     BJ_CD = COOLDOWN.get("bj", 30)
 

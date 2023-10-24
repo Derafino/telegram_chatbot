@@ -10,7 +10,7 @@ from telegram import Update, User, InlineKeyboardButton, InlineKeyboardMarkup, I
     ChatMemberUpdated
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, CallbackContext, MessageHandler, filters, ConversationHandler, \
-    CallbackQueryHandler, ContextTypes, ChatMemberHandler
+    CallbackQueryHandler, ContextTypes, ChatMemberHandler, AIORateLimiter
 from telegram.helpers import escape_markdown
 
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT, logger, ANIME_PRICE, MSG_CD, WHO_CD, BALL8_CD, PICK_CD, RATING_CD, \
@@ -18,7 +18,7 @@ from config import TELEGRAM_TOKEN, TELEGRAM_CHAT, logger, ANIME_PRICE, MSG_CD, W
 from db.crud import setup_database, UserCRUD, UserActionCRUD, UserLevelCRUD, UsersBoostersCRUD, GiveawayCRUD
 from games.black_jack import sum_hand, deal_hand, deal_card, deck
 from games.magic_8_ball import magic_8_ball_phrase
-from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min, calc_xp, validate_bet, rate_limited, \
+from methods import auth_user, chat_only, cooldown_expired, add_coins_per_min, calc_xp, validate_bet, \
     admin_only, extract_datetime, validate_coins_amount
 from modules.anime import choose_random_anime_image
 from modules.epic_games import EGSFreeGames
@@ -35,29 +35,6 @@ SET_AUC_DESCRIPTION = 0
 CONFIRM_AUC_BET = 0
 
 
-class RateLimiter:
-    def __init__(self, rate: int, capacity: int):
-        self.rate = rate
-        self.capacity = capacity
-        self.tokens = capacity
-        self.last_refill = asyncio.get_event_loop().time()
-
-    async def acquire(self):
-        while self.tokens <= 0:
-            self._refill()
-            if self.tokens <= 0:
-                await asyncio.sleep(1)
-        self.tokens -= 1
-
-    def _refill(self):
-        now = asyncio.get_event_loop().time()
-        time_delta = now - self.last_refill
-
-        new_tokens = time_delta * self.rate
-        self.tokens = min(self.tokens + new_tokens, self.capacity)
-        self.last_refill = now
-
-
 class TelegramBot:
     def __init__(self, token, chat_id):
 
@@ -67,9 +44,18 @@ class TelegramBot:
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
 
-        self.app = Application.builder().token(token).build()
+        app_builder = Application.builder()
+        app_builder.token(token)
+        rate_limiter = AIORateLimiter(
+            overall_max_rate=30,
+            overall_time_period=1,
+            group_max_rate=20,
+            group_time_period=60,
+            max_retries=3,
+        )
+        app_builder.rate_limiter(rate_limiter)
+        self.app = app_builder.build()
         self.chat_id = chat_id
-        self.rate_limiter = RateLimiter(rate=1, capacity=30)
         handlers = [
             ChatMemberHandler(self.greet_chat_members, ChatMemberHandler.CHAT_MEMBER),
 
@@ -174,7 +160,6 @@ class TelegramBot:
             calc_xp(user_id)
             UserCRUD.add_user_coins_per_msg(user_id)
 
-    @rate_limited
     @auth_user
     async def start_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -186,7 +171,6 @@ class TelegramBot:
         chat_id = update.message.chat_id
         await self.app.bot.send_message(chat_id, text=bot_message)
 
-    @rate_limited
     @auth_user
     @chat_only
     async def who_handler(self, update: Update, context: CallbackContext) -> None:
@@ -211,7 +195,6 @@ class TelegramBot:
             print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
-    @rate_limited
     @auth_user
     async def magic_8_ball_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -233,7 +216,6 @@ class TelegramBot:
             print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
-    @rate_limited
     @auth_user
     async def balance_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -249,7 +231,6 @@ class TelegramBot:
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
 
-    @rate_limited
     @auth_user
     async def pick_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -286,7 +267,6 @@ class TelegramBot:
             print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
-    @rate_limited
     @auth_user
     async def boosters_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -302,7 +282,6 @@ class TelegramBot:
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
 
-    @rate_limited
     @auth_user
     async def level_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -323,7 +302,6 @@ class TelegramBot:
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
 
-    @rate_limited
     @auth_user
     @chat_only
     async def rating_handler(self, update: Update, context: CallbackContext) -> None:
@@ -360,7 +338,6 @@ class TelegramBot:
             print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
-    @rate_limited
     @auth_user
     async def anime_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -381,7 +358,6 @@ class TelegramBot:
             print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
 
-    @rate_limited
     @auth_user
     async def image_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -401,7 +377,7 @@ class TelegramBot:
         else:
             print(f"You should wait {cooldown} seconds.")
             context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
-    @rate_limited
+
     @auth_user
     async def slap_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -432,7 +408,6 @@ class TelegramBot:
         else:
             await self.app.bot.send_animation(chat_id=self.chat_id, animation=choose_random_slap_gif())
 
-    @rate_limited
     @auth_user
     async def cd_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -452,7 +427,7 @@ class TelegramBot:
         context.job_queue.run_once(self.delete_messages, 15, data=[update.message, reply])
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~ BLACK JACK ~~~~~~~~~~~~~~~~~~~~~~~~~~
-    @rate_limited
+
     @auth_user
     async def bj_start_handler(self, update: Update, context: CallbackContext) -> int:
         """
@@ -501,7 +476,6 @@ class TelegramBot:
             await update.message.reply_text(f'wait {cooldown} sec')
             return ConversationHandler.END
 
-    @rate_limited
     @auth_user
     async def bj_hit_handler(self, update: Update, context: CallbackContext) -> int:
         """
@@ -544,7 +518,6 @@ class TelegramBot:
 
                 return BLACKJACK
 
-    @rate_limited
     @auth_user
     async def bj_stand_handler(self, update: Update, context: CallbackContext) -> int:
         """
@@ -631,7 +604,6 @@ class TelegramBot:
 
         return shop_text, reply_markup
 
-    @rate_limited
     @auth_user
     async def shop_handler(self, update: Update, context: CallbackContext) -> None:
         """
@@ -644,7 +616,6 @@ class TelegramBot:
         await update.message.reply_text(shop_message, reply_markup=reply_markup)
         context.user_data['shop_user_id'] = update.message.from_user.id
 
-    @rate_limited
     async def buy_callback(self, update: Update, context: CallbackContext) -> None:
         """
         handler for buy_item callback
@@ -691,7 +662,6 @@ class TelegramBot:
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~ GIVEAWAY ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    @rate_limited
     async def create_giveaway_handler(self, update: Update, context: CallbackContext) -> None:
         if update.effective_chat.id in ADMINS:
             user = update.message.from_user
@@ -712,7 +682,6 @@ class TelegramBot:
 
             return SET_TYPE
 
-    @rate_limited
     async def set_giveaway_type(self, update: Update, context):
         query = update.callback_query
         user_choice = query.data
@@ -730,7 +699,6 @@ class TelegramBot:
             context.user_data['gifts'] = []
             return SET_ITEM
 
-    @rate_limited
     async def set_giveaway_coins_amount(self, update: Update, context):
         amount = update.message.text
         await update.message.delete()
@@ -741,7 +709,6 @@ class TelegramBot:
                 "You've set the giveaway coins amount. Please enter the number of winners:")
             return SET_WINNERS_AMOUNT
 
-    @rate_limited
     async def set_giveaway_winners_amount(self, update: Update, context: CallbackContext):
         winners_amount_text = update.message.text
         await update.message.delete()
@@ -764,7 +731,6 @@ class TelegramBot:
             await bot_message.edit_text("Invalid input. Please enter a positive integer for the number of winners.")
             return SET_WINNERS_AMOUNT
 
-    @rate_limited
     async def set_giveaway_item(self, update: Update, context: CallbackContext):
         bot_message = context.user_data['bot_message']
         item = update.message.text
@@ -773,7 +739,6 @@ class TelegramBot:
         await bot_message.edit_text(f"You added item: {item}\nNow, please enter the amount:")
         return SET_AMOUNT
 
-    @rate_limited
     async def set_giveaway_item_amount(self, update: Update, context: CallbackContext):
         amount = update.message.text
         await update.message.delete()
@@ -791,7 +756,6 @@ class TelegramBot:
             reply_markup=reply_markup)
         return SET_END_DATETIME_OR_ADD_ITEM
 
-    @rate_limited
     async def set_end_datetime_or_add_item(self, update: Update, context: CallbackContext):
         query = update.callback_query
         if query:
@@ -805,7 +769,6 @@ class TelegramBot:
                                               "- or exact time: '12:10 10.10.2023'")
                 return SET_END_DATETIME
 
-    @rate_limited
     async def set_giveaway_end_datetime(self, update: Update, context: CallbackContext):
         datetime_user_str = update.message.text
         context.user_data['end_datetime'] = extract_datetime(datetime_user_str)
@@ -816,7 +779,6 @@ class TelegramBot:
 
         return SET_PHOTO
 
-    @rate_limited
     async def set_giveaway_photo(self, update: Update, context: CallbackContext):
         context.user_data['giveaway_photo'] = update.message.photo[-1].file_id
         await update.message.delete()
@@ -824,7 +786,6 @@ class TelegramBot:
         await bot_message.edit_text("Now provide description")
         return SET_DESCRIPTION
 
-    @rate_limited
     async def set_giveaway_description(self, update: Update, context: CallbackContext):
         user_description = update.message.text
         context.user_data['description'] = user_description
@@ -852,7 +813,6 @@ class TelegramBot:
         await bot_message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
         return REVIEW
 
-    @rate_limited
     async def review_giveaway(self, update: Update, context):
         giveaway_type = context.user_data['giveaway_type']
         gifts = context.user_data['gifts']
@@ -897,13 +857,11 @@ class TelegramBot:
         wait_for_giveaway_ending_thread.start()
         return ConversationHandler.END
 
-    @rate_limited
     async def cancel_giveaway_handler(self, update: Update, context):
         bot_message = context.user_data['bot_message']
         await bot_message.edit_text('Giveaway creation has been canceled.')
         return ConversationHandler.END
 
-    @rate_limited
     async def participate_callback(self, update: Update, context: CallbackContext):
         user_id = update.effective_user.id
 
@@ -930,19 +888,21 @@ class TelegramBot:
             await update.callback_query.message.edit_reply_markup(reply_markup)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~ ADDITIONAL FUNC ~~~~~~~~~~~~~~~~~~~~~~~~~~
-    @rate_limited
-    async def bot_send_message(self, text: str, reply_message: int = None) -> None:
+
+    async def bot_send_message(self, text: str, reply_message: int = None,
+                               parse_mode: ParseMode = ParseMode.HTML) -> None:
         """
          send message with provided text
 
+
          :param text:
          :param reply_message:
+         :param parse_mode:
          """
 
         await self.app.bot.send_message(chat_id=self.chat_id, text=text,
-                                        reply_to_message_id=reply_message)
+                                        reply_to_message_id=reply_message, parse_mode=parse_mode)
 
-    @rate_limited
     async def bot_edit_message_text(self, chat_id: int, message_id: int, text: str,
                                     parse_mode: ParseMode = None) -> None:
         """
@@ -957,7 +917,6 @@ class TelegramBot:
 
         await self.app.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, parse_mode=parse_mode)
 
-    @rate_limited
     async def bot_edit_message_caption(self, chat_id: int, message_id: int, text: str,
                                        parse_mode: ParseMode = None) -> None:
         """
@@ -966,7 +925,6 @@ class TelegramBot:
         await self.app.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=text,
                                                 parse_mode=parse_mode)
 
-    @rate_limited
     async def bot_send_photo(self, photo_url: str, text: str) -> None:
         """
         send photo by provided url
@@ -977,7 +935,6 @@ class TelegramBot:
         photo = [InputMediaPhoto(photo_url, caption=text, parse_mode=ParseMode.MARKDOWN_V2)]
         await self.app.bot.send_media_group(chat_id=self.chat_id, media=photo)
 
-    @rate_limited
     async def bot_send_media_group(self, media_urls: list, text: str) -> None:
         """
         send media group by provided list of urls
@@ -990,7 +947,6 @@ class TelegramBot:
             media.append(InputMediaPhoto(url))
         await self.app.bot.send_media_group(chat_id=self.chat_id, media=media)
 
-    @rate_limited
     async def group_only_notification(self, update: Update, context: CallbackContext):
         """
         send notification that command can be used only on group chat
@@ -1001,7 +957,6 @@ class TelegramBot:
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 10, data=[update.message, reply])
 
-    @rate_limited
     async def private_only_notification(self, update: Update, context: CallbackContext):
         """
         send notification that command can be used only on group chat
@@ -1012,7 +967,6 @@ class TelegramBot:
         reply = await update.message.reply_text(text=bot_message, parse_mode=ParseMode.MARKDOWN_V2)
         context.job_queue.run_once(self.delete_messages, 10, data=[update.message, reply])
 
-    @rate_limited
     async def delete_messages(self, context: CallbackContext) -> None:
         """
         delete msg from context
@@ -1106,11 +1060,11 @@ class TelegramBot:
 
 def announce_winners(tg_bot: TelegramBot, winners: list, message_id: int, participants_count: int):
     message = "🎉 Giveaway Ended 🎉\n\n"
-
+    winners_message = ''
     if participants_count > 0:
         if winners:
             message += f"Thank you to all {participants_count} participants for joining our giveaway! 🙌\n\n"
-            message += "Winners Announcement 🏆:\n"
+            winners_message += "Winners Announcement 🏆:\n"
 
             for idx, winner_info in enumerate(winners, start=1):
                 winner_id = winner_info['winner']
@@ -1119,21 +1073,24 @@ def announce_winners(tg_bot: TelegramBot, winners: list, message_id: int, partic
                 gift_amount = gift_info['amount']
                 user = UserCRUD.get_user_by_id(winner_id)
                 user_mention = User(winner_id, user.user_nickname, is_bot=False).mention_html()
-                message += f"{idx}. {user_mention} wins {gift_amount}x {gift_name}\n"
+                winners_message += f"{idx}. {user_mention} wins {gift_amount}x {gift_name}\n"
 
-            message += "\nCongratulations to our lucky winners! 🎉\n\n"
-            message += "Stay tuned for more exciting giveaways in the future. " \
-                       "Don't miss your chance to win amazing prizes! " \
-                       "🎁\n\n"
+            winners_message += "\nCongratulations to our lucky winners! 🎉\n\n"
+            winners_message += "Stay tuned for more exciting giveaways in the future. " \
+                               "Don't miss your chance to win amazing prizes! " \
+                               "🎁\n\n"
         else:
-            message += "Unfortunately, there are no winners this time. 😔 " \
-                       "Don't worry, we'll have more giveaways in the " \
-                       "future. Stay tuned! 🎁\n\n"
+            winners_message += "Unfortunately, there are no winners this time. 😔 " \
+                               "Don't worry, we'll have more giveaways in the " \
+                               "future. Stay tuned! 🎁\n\n"
     else:
-        message += "There were no participants in this giveaway. 😢 We'll try again in our next giveaway! 🎁\n\n"
-    tg_bot.loop.create_task(tg_bot.bot_edit_message_text(tg_bot.chat_id, message_id, message, ParseMode.HTML))
-    mention_text = f"Giveaway Results 👀"
-    tg_bot.loop.create_task(tg_bot.bot_send_message(mention_text, message_id))
+        winners_message += "There were no participants in this giveaway. 😢 We'll try again in our next giveaway! 🎁\n\n"
+    logger.debug(winners_message)
+    message += winners_message
+    tg_bot.loop.create_task(tg_bot.bot_edit_message_caption(tg_bot.chat_id, message_id, message, ParseMode.HTML))
+    mention_text = f"Giveaway Results 👀\n"
+    mention_text += winners_message
+    tg_bot.loop.create_task(tg_bot.bot_send_message(mention_text, message_id, ParseMode.HTML))
 
 
 def wait_for_giveaway_ending(giveaway_id, tg_bot: TelegramBot):

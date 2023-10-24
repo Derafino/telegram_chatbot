@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 import time
 import json
 import os
-
+from config import logger
 from telegram.helpers import escape_markdown
 
 
@@ -64,6 +64,7 @@ class SteamEvents:
 
     def check_steam_events_loop(self, tg_bot, num_iterations=None):
         iteration = 0
+        logger.debug('Steam events loop started')
         while True:
             response_content = self.get_last_events()
             fetched_events = self.format_response(response_content)
@@ -74,8 +75,9 @@ class SteamEvents:
                 self.print_new_events(new_events, tg_bot)
                 self.save_to_file(new_events)
 
+            logger.debug('Steam events loop sleeping')
             time.sleep(3600)
-
+            logger.debug('Steam events loop sleeping complete')
             if num_iterations is not None:
                 iteration += 1
                 if iteration >= num_iterations:
