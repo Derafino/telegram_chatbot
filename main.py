@@ -373,10 +373,12 @@ class TelegramBot:
             if UserCRUD.pay_coins(user_id, IMG_PRICE):
                 UserActionCRUD.update_action_time(user_id=update.message.from_user.id, action_id=action_id)
 
-                await update.message.reply_photo(photo=choose_random_image(), has_spoiler=True)
+                answer = await update.message.reply_photo(photo=choose_random_image(), has_spoiler=True)
+            else:
+                answer = await update.message.reply_text("You don't have enough coins!")
         else:
-            print(f"You should wait {cooldown} seconds.")
-            context.job_queue.run_once(self.delete_messages, 1, data=[update.message])
+            answer = await update.message.reply_text(f"You should wait {cooldown} seconds.")
+        context.job_queue.run_once(self.delete_messages, 60 * 5, data=[update.message, answer])
 
     @auth_user
     async def slap_handler(self, update: Update, context: CallbackContext) -> None:
