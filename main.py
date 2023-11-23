@@ -1123,9 +1123,9 @@ def main():
     bonus_per_min_thread = threading.Thread(target=add_coins_per_min, daemon=True)
     bonus_per_min_thread.start()
 
-    # egs_free_games = EGSFreeGames()
-    # check_epic_thread = threading.Thread(target=egs_free_games.check_epic_free_games_loop, args=(tg_bot,), daemon=True)
-    # check_epic_thread.start()
+    egs_free_games = EGSFreeGames()
+    check_epic_thread = threading.Thread(target=egs_free_games.check_epic_free_games_loop, args=(tg_bot,), daemon=True)
+    check_epic_thread.start()
 
     steam_events = SteamEvents()
     check_steam_events_thread = threading.Thread(target=steam_events.check_steam_events_loop, args=(tg_bot,),

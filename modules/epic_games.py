@@ -40,7 +40,6 @@ class EGSFreeGames:
                 url = "https://store.epicgames.com/en-US/p/" + i['catalogNs']['mappings'][0]['pageSlug']
 
                 if i['promotions']['promotionalOffers']:
-
                     start_date = i['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['startDate']
                     start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%S.%fZ")
                     end_date = i['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['endDate']
@@ -52,13 +51,12 @@ class EGSFreeGames:
                                 'end_date': int(end_date.timestamp()),
                                 'img_url': img_url}
                         free_games_data["current"].append(game)
-                elif i['promotions']['upcomingPromotionalOffers']:
-
-                    start_date = i['promotions']['upcomingPromotionalOffers'][0]['promotionalOffers'][0]['startDate']
-                    start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%S.%fZ")
-                    if datetime.datetime.now() < start_date:
-                        game = {'title': i['title'], 'url': url, 'start_date': int(start_date.timestamp())}
-                        free_games_data["future"].append(game)
+                # elif i['promotions']['upcomingPromotionalOffers']:
+                #     start_date = i['promotions']['upcomingPromotionalOffers'][0]['promotionalOffers'][0]['startDate']
+                #     start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%S.%fZ")
+                #     if datetime.datetime.now() < start_date:
+                #         game = {'title': i['title'], 'url': url, 'start_date': int(start_date.timestamp())}
+                #         free_games_data["future"].append(game)
         return free_games_data
 
     def save_to_file(self, games: dict):
