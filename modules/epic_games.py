@@ -37,20 +37,21 @@ class EGSFreeGames:
         free_games_data = {"current": [], "future": []}
         for i in free_games['data']['Catalog']['searchStore']['elements']:
             if i['promotions']:
-                url = "https://store.epicgames.com/en-US/p/" + i['catalogNs']['mappings'][0]['pageSlug']
+                if i['catalogNs']['mappings']:
+                    url = "https://store.epicgames.com/en-US/p/" + i['catalogNs']['mappings'][0]['pageSlug']
 
-                if i['promotions']['promotionalOffers']:
-                    start_date = i['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['startDate']
-                    start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%S.%fZ")
-                    end_date = i['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['endDate']
-                    end_date = datetime.datetime.strptime(end_date, "%Y-%m-%dT%H:%M:%S.%fZ")
-                    if end_date > datetime.datetime.now() > start_date and \
-                            i['price']['totalPrice']['discountPrice'] == 0:
-                        img_url = [img for img in i['keyImages'] if img['type'] == 'OfferImageTall'][0]['url']
-                        game = {'title': i['title'], 'url': url, 'start_date': int(start_date.timestamp()),
-                                'end_date': int(end_date.timestamp()),
-                                'img_url': img_url}
-                        free_games_data["current"].append(game)
+                    if i['promotions']['promotionalOffers']:
+                        start_date = i['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['startDate']
+                        start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%S.%fZ")
+                        end_date = i['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['endDate']
+                        end_date = datetime.datetime.strptime(end_date, "%Y-%m-%dT%H:%M:%S.%fZ")
+                        if end_date > datetime.datetime.now() > start_date and \
+                                i['price']['totalPrice']['discountPrice'] == 0:
+                            img_url = [img for img in i['keyImages'] if img['type'] == 'OfferImageTall'][0]['url']
+                            game = {'title': i['title'], 'url': url, 'start_date': int(start_date.timestamp()),
+                                    'end_date': int(end_date.timestamp()),
+                                    'img_url': img_url}
+                            free_games_data["current"].append(game)
                 # elif i['promotions']['upcomingPromotionalOffers']:
                 #     start_date = i['promotions']['upcomingPromotionalOffers'][0]['promotionalOffers'][0]['startDate']
                 #     start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%S.%fZ")
